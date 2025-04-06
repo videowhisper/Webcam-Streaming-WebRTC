@@ -1,0 +1,18 @@
+{
+    "deny": "Please fill in your WebRTC server details in this config file and remove/empty the deny property to continue. Get a free developer account from https://webrtchost.com/hosting-plans/#WebRTC-Only",
+    "channel": "{generate}",
+    "username": "{generate}",
+    "view": "Broadcast",
+    "enableGET": true,
+    "showURL": true,
+    "vwsSocket": "REPLACE_WITH_YOUR_SERVER_URL",
+    "vwsToken": "REPLACE_WITH_YOUR_TOKEN",
+    "stream": {
+        "width":640,
+        "height":360,
+        "framerate":15,
+        "videoBitrate":500,
+        "audioBitrate":32
+    },
+    "development": false
+}
