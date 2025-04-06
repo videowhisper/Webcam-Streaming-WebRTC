@@ -95,13 +95,13 @@ export default function App() {
         <div className="flex flex-col md:flex-row justify-center space-y-3 md:space-y-0 md:space-x-4">
           <button 
             onClick={handleReload}
-            className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline"
+            className="bg-gray-700 bg-opacity-70 hover:bg-opacity-100 text-white font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline transition-opacity"
           >
             Reload Page
           </button>
           <button 
             onClick={handleConsultSupport}
-            className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline"
+            className="bg-gray-700 bg-opacity-70 hover:bg-opacity-100 text-white font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline transition-opacity"
           >
             Consult Support
           </button>

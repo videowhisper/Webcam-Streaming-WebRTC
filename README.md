@@ -249,9 +249,11 @@ When deploying, remember that the application requires a WebRTC signaling server
 
 When developing or contributing to this project:
 
-1. **Private Configuration**: Always use `config.json` for development and testing
+1. **Private Configuration**: Always use `config.json` for development and testing, not the public `unconfigured.json`
+   - This file should contain your streaming server/account details and should not be shared publicly
+   - The `unconfigured.json` file is a public template with out of the box values
 2. **Environment Variables**: Consider using environment variables for sensitive data in production builds
-3. **Configuration Template**: Update `config.template.json` if you add new configuration options
+3. **Configuration Template**: Update `unconfigured.json` if you add new configuration options
 4. **Never Commit Credentials**: Ensure your private WebRTC server details are never committed to the repository
 
 To prepare for publishing:

@@ -31,6 +31,10 @@ export default function PlayWebRTC({ config, channel, socket }) {
     lastTimestamp: 0
   });
 
+  // States for button hover effects
+  const [audioButtonHovered, setAudioButtonHovered] = useState(false);
+  const [connectionButtonHovered, setConnectionButtonHovered] = useState(false);
+
   useEffect(() => {
     if (!socket || !channel) return;
 
@@ -77,10 +81,6 @@ export default function PlayWebRTC({ config, channel, socket }) {
         // Add incoming ICE candidates
         peerConnection.current.addIceCandidate(new RTCIceCandidate(message.candidate))
           .catch(error => console.error("Error adding received ICE candidate", error));
-      }
-      // Handle broadcaster information
-      else if (message.type === "broadcaster" && message.broadcasterId) {
-        broadcasterId.current = message.broadcasterId;
       }
     };
 
@@ -486,15 +486,19 @@ export default function PlayWebRTC({ config, channel, socket }) {
         className="w-full h-full object-contain bg-black"
       />
       {error && (
-        <div className="absolute inset-x-0 bottom-5 mx-auto w-fit bg-red-700 text-white px-4 py-2 rounded shadow-lg z-50">
+        <div 
+          className="absolute inset-x-0 bottom-5 mx-auto w-fit bg-red-700 opacity-70 text-white px-4 py-2 rounded shadow-lg z-50"
+        >
           <p>{error}</p>
-          <button onClick={() => setError(null)} className="ml-4 underline">Close</button>
+          <button onClick={() => setError(null)} className="ml-4 underline opacity-70 hover:opacity-100 transition-opacity">Close</button>
         </div>
       )}
       
       {/* Stats display overlay */}
       {isLive && isDevMode() && (
-        <div className="absolute bottom-5 left-5 bg-black bg-opacity-70 text-white text-xs p-2 rounded">
+        <div 
+          className="absolute bottom-5 left-5 bg-black opacity-60 text-white text-xs p-2 rounded"
+        >
           <div>Resolution: {stats.video.resolution}</div>
           <div>FPS: {stats.video.fps}</div>
           <div>Video: {stats.video.bitrate} kbps</div>
@@ -505,13 +509,16 @@ export default function PlayWebRTC({ config, channel, socket }) {
       {/* Audio Mute Button - Top Right */}
       <button
         onClick={toggleAudioMute}
-        className="absolute top-5 right-5 p-3 rounded-full shadow-lg transition-all flex items-center justify-center pointer-events-auto border bg-black bg-opacity-50 text-white hover:bg-opacity-75"
+        className="absolute top-5 right-5 p-3 rounded-full shadow-lg bg-black opacity-50 hover:opacity-90 text-white border border-gray-700/50 transition-opacity duration-200 group"
         title={audioMuted ? "Unmute Audio" : "Mute Audio"}
       >
-        {audioMuted ? <VolumeX size={24} strokeWidth={2} /> : <Volume2 size={24} strokeWidth={2} />}
+        {audioMuted ? 
+          <VolumeX size={24} strokeWidth={2} className="opacity-70 group-hover:opacity-100 transition-opacity" /> : 
+          <Volume2 size={24} strokeWidth={2} className="opacity-70 group-hover:opacity-100 transition-opacity" />
+        }
       </button>
 
-      {/* Connection Button - Moved down */}
+      {/* Connection Button */}
       <button
         onClick={() => {
           if (isLive || isConnecting) {
@@ -520,16 +527,19 @@ export default function PlayWebRTC({ config, channel, socket }) {
             connectStream();
           }
         }}
-        className={`absolute top-20 right-5 p-3 rounded-full shadow-lg transition-all flex items-center justify-center pointer-events-auto border
-          ${isLive ? 'bg-green-600 text-white hover:bg-green-700' : isConnecting ? 'bg-yellow-600 text-white hover:bg-yellow-700' : 'bg-red-600 text-white hover:bg-red-700'}
-        `}
+        className="absolute top-20 right-5 p-3 rounded-full shadow-lg bg-black opacity-50 hover:opacity-90 text-white border border-gray-700/50 transition-opacity duration-200 group"
         title={
           isLive ? "Disconnect Stream"
           : isConnecting ? "Connecting..."
           : "Connect"
         }
       >
-        {isLive ? <Wifi size={24} strokeWidth={2} /> : isConnecting ? <Loader size={24} strokeWidth={2} className="animate-spin" /> : <WifiOff size={24} />}
+        {isLive ? 
+          <Wifi size={24} strokeWidth={2} className="text-green-500" /> : 
+          isConnecting ? 
+          <Loader size={24} strokeWidth={2} className="text-yellow-500 animate-spin" /> : 
+          <WifiOff size={24} strokeWidth={2} className="text-red-500" />
+        }
       </button>
     </div>
   );
