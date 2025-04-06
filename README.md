@@ -2,12 +2,17 @@
 
 A modern React JS application for real-time WebRTC webcam video streaming: Broadcast camera live to multiple viewers. Public source code & build included.
 
+[Live Demo](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/)
+
+![Webcam Streaming WebRTC Illustration](images/illustration.jpg)
+
 ## Features
 
 - **Real-time WebRTC video streaming** with peer-to-peer connections
 - **Broadcast Mode**: Stream video from your camera to multiple viewers
 - **Play Mode**: Watch streams from broadcasters
 - **Camera Selection**: Switch between available camera devices
+- **Audio Controls**: Mute/unmute microphone in broadcast mode or audio in playback mode
 - **Connection Status Indicators**: Monitor connection state and viewer count
 - **Responsive UI**: Built with Tailwind CSS
 - **Stream URL Sharing**: Easily share links to your streams
@@ -19,6 +24,7 @@ You can test the application without installation by visiting the official demo:
 
 ### Demo Site
 Visit [https://demo.videowhisper.com/Webcam-Streaming-WebRTC/](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/) to try out the application.
+
 
 ### Testing as a Broadcaster
 1. Access the demo link above
@@ -44,8 +50,8 @@ To install and run the application on your own server:
 ### Using Pre-built Distribution
 
 1. Download or build the distribution files (the `dist` folder)
-2. Upload the files to your web server (Apache, Nginx, etc.)
-3. Create a `config.json` file in the root folder (or duplicate `unconfigured.json`) and update it with your server details:
+2. Upload the files from `dist` to a folder on your web server (Apache, Nginx, etc.)
+3. Create a `config.json` file in the root folder (or duplicate `unconfigured.json`) and update it with your streaming server details:
 
 ```json
 {
@@ -67,13 +73,13 @@ To install and run the application on your own server:
 }
 ```
 
-4. Replace `wss://your-webrtc-server:3000` and `your-token-here` with your VideoWhisper WebRTC server details
+4. Replace `wss://your-webrtc-server:3000` and `your-token-here` with your VideoWhisper Server details (get a free account if you don't have own streaming server or account)
 5. Access the application through your web server
 
 ### Requirements
 
 - A web server with HTTPS (required for WebRTC in production)
-- Access to a VideoWhisper Server that handles signaling, STUN/TURN (self-hosted [VideoWhisper Server](https://github.com/videowhisper/videowhisper-webrtc) or a [free] plan from [WebRTCHost](https://webrtchost.com/) )
+- Access to a VideoWhisper Server that handles signaling, STUN/TURN (self-hosted [VideoWhisper Server](https://github.com/videowhisper/videowhisper-webrtc) or a *free* plan from [WebRTCHost](https://webrtchost.com/) )
 - Modern browser with WebRTC support (Chrome, Firefox, Safari, Edge, Brave)
 
 ### Quick Demo Links
@@ -159,7 +165,7 @@ The application will:
 2. Register for a free developer account at [WebRTCHost](https://webrtchost.com/hosting-plans/#WebRTC-Only)
 3. Edit the file with your own server details and remove the `deny` property:
 
-```json
+```
 {
     "channel": "{generate}",      // Will auto-generate a channel name
     "username": "{generate}",     // Will auto-generate a username
@@ -180,10 +186,12 @@ You can embed the application in your website and provide custom configuration t
 ```html
 <script>
 window.videowhisperConfig = {
-  configURL: "sampleConfig.json" // Path to your configuration file or integration script like app-login.php
+  configURL: "app-login.php" 
 } 
+```
+You can use an integration script that only provides access to authenticated site users.
 
-## Development and Build Instructions
+## Building and Development
 
 ### Prerequisites
 

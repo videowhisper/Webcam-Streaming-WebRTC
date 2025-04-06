@@ -29,7 +29,7 @@ export default function Broadcast({ config, socket }) {
           className="p-3 rounded-full shadow-lg transition-all flex items-center justify-center bg-black bg-opacity-50 hover:bg-opacity-75 text-white border border-gray-700"
           title="Copy stream URL"
         >
-          {copied ? <Check size={20} className="text-green-500" /> : <Copy size={20} />}
+          {copied ? <Check size={24} strokeWidth={2} className="text-green-500" /> : <Copy size={24} strokeWidth={2} />}
         </button>
         
         <button
@@ -37,7 +37,7 @@ export default function Broadcast({ config, socket }) {
           className="p-3 rounded-full shadow-lg transition-all flex items-center justify-center bg-black bg-opacity-50 hover:bg-opacity-75 text-white border border-gray-700"
           title="Watch stream in new tab"
         >
-          <Tv size={20} />
+          <Tv size={24} strokeWidth={2} />
         </button>
       </div>
     </div>

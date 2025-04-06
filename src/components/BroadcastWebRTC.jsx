@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { isDevMode } from '../config/devMode';
-import { Wifi, WifiOff, SwitchCamera, Loader } from 'lucide-react';
+import { Wifi, WifiOff, SwitchCamera, Loader, Mic, MicOff } from 'lucide-react';
 
 export default function BroadcastWebRTC({ config, socket }) {
   const videoRef = useRef(null);
@@ -12,6 +12,8 @@ export default function BroadcastWebRTC({ config, socket }) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [connectedPeers, setConnectedPeers] = useState(0); // Add state for counting connected peers
+  const [audioMuted, setAudioMuted] = useState(false);
+  const audioTrackRef = useRef(null);
   
   // WebRTC peer connections state
   const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });
@@ -253,6 +255,22 @@ export default function BroadcastWebRTC({ config, socket }) {
     };
   }
 
+  // Toggle audio mute function
+  const toggleAudioMute = () => {
+    if (!localStream.current) return;
+    
+    const audioTracks = localStream.current.getAudioTracks();
+    if (audioTracks.length > 0) {
+      const audioTrack = audioTracks[0];
+      audioTrack.enabled = !audioTrack.enabled;
+      setAudioMuted(!audioTrack.enabled);
+      
+      if (isDevMode()) {
+        console.debug('BroadcastWebRTC Audio track ' + (audioTrack.enabled ? 'enabled' : 'disabled'));
+      }
+    }
+  };
+
   async function startPreview() {
     setError(null);
     try {
@@ -406,17 +424,30 @@ export default function BroadcastWebRTC({ config, socket }) {
             playsInline
             className="w-full h-full object-contain bg-black"
           />
+          
+          {/* Audio Mute Button - Top Right */}
+          <button
+            onClick={toggleAudioMute}
+            className="absolute top-5 right-5 p-3 rounded-full shadow-lg transition-all flex items-center justify-center pointer-events-auto border bg-black bg-opacity-50 text-white hover:bg-opacity-75"
+            title={audioMuted ? "Unmute Microphone" : "Mute Microphone"}
+          >
+            {audioMuted ? <MicOff size={24} strokeWidth={2} /> : <Mic size={24} strokeWidth={2} />}
+          </button>
+          
+          {/* Camera Switch Button - Moved down */}
           <button
             onClick={rotateCamera}
             disabled={deviceList.length <= 1}
-            className={`absolute top-5 right-5 p-3 rounded-full shadow-lg transition-all flex items-center space-x-2 pointer-events-auto border
+            className={`absolute top-20 right-5 p-3 rounded-full shadow-lg transition-all flex items-center space-x-2 pointer-events-auto border
               ${deviceList.length > 1 ? 'bg-black bg-opacity-50 text-white hover:bg-opacity-75' : 'bg-gray-800 bg-opacity-40 text-gray-400 cursor-not-allowed'}
             `}
             title={deviceList.length > 1 ? "Switch Camera" : "No other cameras available"}
           >
             <SwitchCamera size={24} strokeWidth={2} />
           </button>
-          <div className="absolute top-20 right-5 flex flex-col items-center">
+          
+          {/* Connection Button - Moved further down */}
+          <div className="absolute top-36 right-5 flex flex-col items-center">
             <button
               onClick={() => {
                 if (isLive || isConnecting) {
@@ -435,7 +466,7 @@ export default function BroadcastWebRTC({ config, socket }) {
                 : "Connect"
               }
             >
-              {isLive ? <Wifi size={20} /> : isConnecting ? <Loader size={20} className="animate-spin" /> : <WifiOff size={20} />}
+              {isLive ? <Wifi size={24} strokeWidth={2} /> : isConnecting ? <Loader size={24} className="animate-spin" strokeWidth={2} /> : <WifiOff size={24} strokeWidth={2} />}
               {isLive && (
                 <span className="text-xs font-bold mt-1">{connectedPeers}</span>
               )}

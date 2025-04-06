@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Wifi, WifiOff, Loader } from "lucide-react";
+import { Wifi, WifiOff, Loader, Volume2, VolumeX } from "lucide-react";
 import { isDevMode } from '../config/devMode';
 
 export default function PlayWebRTC({ config, channel, socket }) {
@@ -7,6 +7,7 @@ export default function PlayWebRTC({ config, channel, socket }) {
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState(null);
+  const [audioMuted, setAudioMuted] = useState(false);
   
   // WebRTC related states and refs
   const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });
@@ -431,6 +432,51 @@ export default function PlayWebRTC({ config, channel, socket }) {
     if (isDevMode()) console.debug("PlayWebRTC Manual connect attempt");
   };
 
+  // Toggle audio mute function
+  const toggleAudioMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !videoRef.current.muted;
+      setAudioMuted(videoRef.current.muted);
+      
+      if (isDevMode()) {
+        console.debug('PlayWebRTC Audio ' + (videoRef.current.muted ? 'muted' : 'unmuted'));
+      }
+      
+      // If we have an active peer connection, we could also try to stop receiving audio track
+      if (peerConnection.current && videoRef.current.muted) {
+        try {
+          // This is an advanced approach that attempts to stop receiving the audio track completely
+          // It may not be supported in all browsers and situations
+          const transceivers = peerConnection.current.getTransceivers();
+          transceivers.forEach(transceiver => {
+            if (transceiver.receiver && transceiver.receiver.track && transceiver.receiver.track.kind === 'audio') {
+              if (isDevMode()) console.debug('PlayWebRTC Found audio transceiver, setting direction to recvonly/inactive');
+              // Try to stop receiving audio data - browser support varies
+              transceiver.direction = "inactive";
+            }
+          });
+        } catch (err) {
+          console.warn('PlayWebRTC Unable to modify audio transceiver direction:', err);
+          // Fallback to just muting the audio element, which we've already done
+        }
+      } else if (peerConnection.current && !videoRef.current.muted) {
+        // If unmuting and we have a connection, ensure we're receiving audio again
+        try {
+          const transceivers = peerConnection.current.getTransceivers();
+          transceivers.forEach(transceiver => {
+            if (transceiver.receiver && transceiver.receiver.track && transceiver.receiver.track.kind === 'audio') {
+              if (isDevMode()) console.debug('PlayWebRTC Found audio transceiver, setting direction back to recvonly');
+              transceiver.direction = "recvonly";
+            }
+          });
+        } catch (err) {
+          console.warn('PlayWebRTC Unable to modify audio transceiver direction:', err);
+          // Video is already unmuted from earlier, so no need for additional fallback
+        }
+      }
+    }
+  };
+
   return (
     <div className="absolute inset-0 bg-black">
       <video
@@ -455,7 +501,17 @@ export default function PlayWebRTC({ config, channel, socket }) {
           <div>Audio: {stats.audio.bitrate} kbps</div>
         </div>
       )}
+      
+      {/* Audio Mute Button - Top Right */}
+      <button
+        onClick={toggleAudioMute}
+        className="absolute top-5 right-5 p-3 rounded-full shadow-lg transition-all flex items-center justify-center pointer-events-auto border bg-black bg-opacity-50 text-white hover:bg-opacity-75"
+        title={audioMuted ? "Unmute Audio" : "Mute Audio"}
+      >
+        {audioMuted ? <VolumeX size={24} strokeWidth={2} /> : <Volume2 size={24} strokeWidth={2} />}
+      </button>
 
+      {/* Connection Button - Moved down */}
       <button
         onClick={() => {
           if (isLive || isConnecting) {
@@ -464,7 +520,7 @@ export default function PlayWebRTC({ config, channel, socket }) {
             connectStream();
           }
         }}
-        className={`absolute top-5 right-5 p-3 rounded-full shadow-lg transition-all flex items-center justify-center pointer-events-auto border
+        className={`absolute top-20 right-5 p-3 rounded-full shadow-lg transition-all flex items-center justify-center pointer-events-auto border
           ${isLive ? 'bg-green-600 text-white hover:bg-green-700' : isConnecting ? 'bg-yellow-600 text-white hover:bg-yellow-700' : 'bg-red-600 text-white hover:bg-red-700'}
         `}
         title={
@@ -473,7 +529,7 @@ export default function PlayWebRTC({ config, channel, socket }) {
           : "Connect"
         }
       >
-        {isLive ? <Wifi size={20} /> : isConnecting ? <Loader size={20} className="animate-spin" /> : <WifiOff size={20} />}
+        {isLive ? <Wifi size={24} strokeWidth={2} /> : isConnecting ? <Loader size={24} strokeWidth={2} className="animate-spin" /> : <WifiOff size={24} />}
       </button>
     </div>
   );

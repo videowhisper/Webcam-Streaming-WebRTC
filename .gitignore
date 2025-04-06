@@ -13,7 +13,7 @@ node_modules
 .pnp.js
 
 # Build files
-dist
+# dist - including dist for easy setup
 dist-ssr
 *.local
 build
