@@ -79,7 +79,7 @@ To install and run the application on your own server:
 ### Requirements
 
 - A web server with HTTPS (required for WebRTC in production)
-- Access to a VideoWhisper Server that handles signaling, STUN/TURN (self-hosted [VideoWhisper Server](https://github.com/videowhisper/videowhisper-webrtc) or a *free* plan from [WebRTCHost](https://webrtchost.com/) )
+- Access to a VideoWhisper Server that handles signaling, STUN/TURN (self-hosted [VideoWhisper Server](https://github.com/videowhisper/videowhisper-webrtc) or a *free* plan from [WebRTCHost](https://webrtchost.com/hosting-plans/#Streaming-Only) )
 - Modern browser with WebRTC support (Chrome, Firefox, Safari, Edge, Brave)
 
 ### Quick Demo Links
@@ -261,7 +261,6 @@ To prepare for publishing:
 2. Update `unconfigured.json` with placeholder values and the `deny` property
 3. Update documentation as needed with any new configuration options
 
-
 ## Server Communication API
 
 ### Broadcaster to Server
@@ -288,13 +287,21 @@ To prepare for publishing:
 | `publishError` | Error notification for broadcasting issues, for Broadcaster |
 | `subscribeError` | Error notification for viewing issues, for Viewer  |
 
-### WebRTC Message Types
+### WebRTC Message Types between Peers (messagePeer)
 
 | Type | Purpose |
 |------|---------|
 | `offer` | Initial connection offer from broadcaster to viewer |
 | `answer` | Viewer's response to an offer |
 | `candidate` | ICE candidate for connection establishment |
-| `disconnect` | Notification of peer disconnection |
 
+## Styling and UI
+Project uses [Tailwind CSS](https://tailwindcss.com/) for styling and [Vite](https://vite.dev). The UI is responsive and designed to work well on various screen sizes. For documentation on how to customize the styles, refer to the [Tailwind CSS + Vite documentation](https://tailwindcss.com/docs/installation/using-vite).
 
+## Technologies Used
+- **React**: JavaScript library for building user interfaces
+- **Vite**: Build tool for fast development and production builds
+- **Tailwind CSS**: Utility-first CSS framework for styling
+- **Socket.IO**: Library for real-time communication between client and server
+- **WebRTC**: Technology for real-time peer-to-peer communication
+- **VideoWhisper WebRTC Server**: Signaling server for WebRTC connections

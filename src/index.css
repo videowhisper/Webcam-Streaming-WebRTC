@@ -1,4 +1,6 @@
-/* src/index.css */
+/* src/index.css 
+https://tailwindcss.com/docs/installation/using-vite
+*/
 @import "tailwindcss";
 
 :root {

@@ -1,9 +1,19 @@
+/*
+Technology stack for this app includes Taiwind CSS, Vite, Lucide Icons, React, Socket.IO, WebRTC, VideoWhisper Server, Vite Plugin PWA.
+https://github.com/tailwindlabs/tailwindcss 
+https://github.com/vitejs/vite 
+https://github.com/lucide-icons/lucide
+https://github.com/videowhisper/videowhisper-webrtc 
+https://tailwindcss.com/docs/installation/using-vite
+*/
+
 import React, { useEffect, useState } from "react";
 import { Loader } from "lucide-react";
 import Broadcast from "./components/Broadcast";
 import Play from "./components/Play";
 import { loadConfig } from "./config/configLoader";
 import { createSocket } from "./services/videowhisperServer";
+
 
 // Watermark component to be displayed in all views
 const Watermark = () => (
