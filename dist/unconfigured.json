@@ -5,8 +5,11 @@
     "view": "Broadcast",
     "enableGET": true,
     "showURL": true,
-    "vwsSocket": "REPLACE_WITH_YOUR_SERVER_URL",
-    "vwsToken": "REPLACE_WITH_YOUR_TOKEN",
+    "videowhisperServer":{
+        "socket": "REPLACE_WITH_YOUR_SERVER_URL",
+        "authentication": "token",
+        "token": "REPLACE_WITH_YOUR_TOKEN"
+    },
     "stream": {
         "width":640,
         "height":360,

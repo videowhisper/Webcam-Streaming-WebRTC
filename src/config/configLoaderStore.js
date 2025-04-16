@@ -1,26 +1,18 @@
-function generateId(length = 3) {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let id = '';
-  while (id.length < length) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-}
+// filepath: /Users/ntm3k/React/Webcam-Streaming-WebRTC/src/config/configLoaderStore.js
+import useAppStore from '../store/appStore';
+import { generateId, getGETParam } from './configUtils';
 
-function getGETParam(param) {
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.get(param);
-}
-
-// Import the setConfigDevMode function
-import { setConfigDevMode } from './devMode';
-
-export async function loadConfig() {
+/**
+ * Load configuration and store it in the Zustand store
+ * This function should be called during app initialization
+ */
+export async function loadConfigIntoStore() {
+  const store = useAppStore.getState();
+  
   try {
     const scriptConfig = window?.videowhisperConfig || {};
     
     // Try to load private config first, then fall back to unconfigured config
-    // Use relative paths with ./ instead of absolute paths with /
     const configFiles = ["./config.json", "./unconfigured.json"];
     let json = null;
     let configSource = null;
@@ -40,9 +32,11 @@ export async function loadConfig() {
       }
     }
 
-    // If no config file was loaded successfully, return null
+    // If no config file was loaded successfully, set error and return
     if (!json) {
-      console.error("Failed to load any config file");
+      const error = "Failed to load any config file";
+      console.error(error);
+      store.setConfigError(error);
       return null;
     }
 
@@ -54,15 +48,17 @@ export async function loadConfig() {
 
     // Set the development mode based on the config
     if (merged.development === true) {
-      setConfigDevMode(true);
+      store.setDevMode(true);
     } else {
-      setConfigDevMode(false);
+      store.setDevMode(false);
     }
 
     // Check for deny property that blocks using unconfigured config
     if (merged.deny) {
       console.error("Configuration denied:", merged.deny);
-      return { ...merged, error: merged.deny };
+      store.setConfig({ ...merged, error: merged.deny });
+      store.setView("Denied");
+      return merged;
     }
 
     // Allow GET parameter overrides
@@ -85,13 +81,22 @@ export async function loadConfig() {
     }
 
     if (!merged.channel || !merged.username) {
-      console.error("Invalid configuration: missing channel or username", merged);
+      const error = "Invalid configuration: missing channel or username";
+      console.error(error, merged);
+      store.setConfigError(error);
+      store.setView("Error");
       return null;
     }
 
+    // Store the config in the global state
+    store.setConfig(merged);
+    store.setView(merged.view || "Broadcast");
+    
     return merged;
   } catch (err) {
     console.error("Error loading config:", err);
+    store.setConfigError(err.message || "Unknown configuration error");
+    store.setView("Error");
     return null;
   }
 }

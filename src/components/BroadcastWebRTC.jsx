@@ -38,6 +38,7 @@ export default function BroadcastWebRTC({ config, socket }) {
     if (isDevMode()) console.debug('BroadcastWebRTC Connected peers count updated:', count);
   };
 
+  // Split the useEffect to separate camera switching from socket handling
   useEffect(() => {
     if (isDevMode() && !hasMounted.current) {
       console.debug('BroadcastWebRTC mounted with config:', config);
@@ -47,22 +48,28 @@ export default function BroadcastWebRTC({ config, socket }) {
     startPreview();
 
     return () => {
-      // Clean up stream on unmount
+      // Only clean up stream when changing devices or unmounting
       if (videoRef.current && videoRef.current.srcObject) {
         videoRef.current.srcObject.getTracks().forEach(track => track.stop());
         videoRef.current.srcObject = null;
       }
       
-      // Close all peer connections
-      Object.values(peerConnections.current).forEach(pc => {
-        if (pc) pc.close();
-      });
-      peerConnections.current = {};
-      
-      // Remove all socket listeners
-      cleanupSocketListeners();
+      // NOTE: We no longer clean up socket listeners here
+      // We only clean up peer connections if component is unmounting completely
+      if (!localStream.current) {
+        cleanupPeerConnections();
+      }
     };
   }, [selectedDeviceId]);
+  
+  // This effect handles component mounting/unmounting cleanup
+  useEffect(() => {
+    return () => {
+      // This only runs when the component is fully unmounting
+      cleanupPeerConnections();
+      cleanupSocketListeners();
+    };
+  }, []);
 
   // Setup socket event listeners
   useEffect(() => {
@@ -70,6 +77,18 @@ export default function BroadcastWebRTC({ config, socket }) {
 
     // Setup socket event listeners for peers
     socket.on('message', handleSocketMessage);
+    
+    // Add socket connection state handlers
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('publishError', handlePublishError);
+    
+    // Check initial socket state
+    if (socket.connected && localStream.current) {
+      handleConnect();
+    } else {
+      setIsConnecting(true);
+    }
     
     return () => {
       cleanupSocketListeners();
@@ -79,8 +98,64 @@ export default function BroadcastWebRTC({ config, socket }) {
   // Clean up socket listeners
   function cleanupSocketListeners() {
     if (!socket) return;
+    
+    if (isDevMode()) console.debug('BroadcastWebRTC cleaning up socket listeners');
+    
+    // First remove all listeners to ensure no duplicates
+    socket.off('message');
+    socket.off('connect');
+    socket.off('disconnect');
+    socket.off('publishError');
+    
+    // Then remove specific handlers (belt-and-suspenders approach)
     socket.off('message', handleSocketMessage);
+    socket.off('connect', handleConnect);
+    socket.off('disconnect', handleDisconnect);
+    socket.off('publishError', handlePublishError);
   }
+
+  // Handle socket connection
+  const handleConnect = () => {
+    if (!localStream.current || !socket || !config.channel || !config.username) return;
+    
+    const streamSettings = localStream.current.getVideoTracks()[0]?.getSettings();
+    if (!streamSettings) return;
+    
+    const publishParams = {
+      width: streamSettings.width,
+      height: streamSettings.height,
+      frameRate: streamSettings.frameRate,
+      videoBitrate: config.stream?.videoBitrate || 500,
+      audioBitrate: config.stream?.audioBitrate || 32
+    };
+
+    if (isDevMode()) console.debug('BroadcastWebRTC socket connected — publishing to:', config.channel, publishParams);
+    socket.emit('publish', config.username, config.channel, publishParams);
+    setIsConnecting(false);
+    setIsLive(true);
+    
+    // Store current channel and username
+    currentUsername.current = config.username;
+    currentChannel.current = config.channel;
+  };
+
+  // Handle socket disconnect
+  const handleDisconnect = () => {
+    if (isDevMode()) console.debug('BroadcastWebRTC socket disconnected');
+    setIsLive(false);
+    setIsConnecting(false);
+    
+    // Clean up peer connections on disconnect
+    cleanupPeerConnections();
+  };
+
+  // Handle publish error
+  const handlePublishError = (err) => {
+    console.error('BroadcastWebRTC Publish error:', err);
+    setError('Publishing failed: ' + err.message);
+    setIsLive(false);
+    setIsConnecting(false);
+  };
 
   // Handle socket messages
   function handleSocketMessage(message) {
@@ -130,6 +205,16 @@ export default function BroadcastWebRTC({ config, socket }) {
           .catch(err => console.error('BroadcastWebRTC Error adding ICE candidate:', err));
       }
     } 
+  }
+
+  // Clean up all peer connections
+  function cleanupPeerConnections() {
+    if (isDevMode()) console.debug('BroadcastWebRTC Cleaning up all peer connections');
+    Object.values(peerConnections.current).forEach(pc => {
+      if (pc) pc.close();
+    });
+    peerConnections.current = {};
+    setConnectedPeers(0); // Reset peer count when cleaning up
   }
 
   // Add a new peer connection
@@ -323,57 +408,24 @@ export default function BroadcastWebRTC({ config, socket }) {
       if (socket && config.channel && config.username) {
         currentUsername.current = config.username;
         currentChannel.current = config.channel;
-
-        const handleConnect = () => {
-          const streamSettings = stream.getVideoTracks()[0].getSettings();
-          const publishParams = {
-            width: streamSettings.width,
-            height: streamSettings.height,
-            frameRate: streamSettings.frameRate,
-            videoBitrate: config.stream?.videoBitrate || 500,
-            audioBitrate: config.stream?.audioBitrate || 32
-          };
-
-          if (isDevMode()) console.debug('BroadcastWebRTC socket connected — publishing to:', config.channel, publishParams);
-          socket.emit('publish', config.username, config.channel, publishParams);
-          setIsConnecting(false);
-          setIsLive(true);
-        };
-
-        const handleDisconnect = () => {
-          if (isDevMode()) console.debug('BroadcastWebRTC socket disconnected');
-          setIsLive(false);
-          setIsConnecting(false);
-          
-          // Clean up peer connections on disconnect
-          Object.values(peerConnections.current).forEach(pc => {
-            if (pc) pc.close();
-          });
-          peerConnections.current = {};
-        };
-
-        const handlePublishError = (err) => {
-          console.error('BroadcastWebRTC  Publish error:', err);
-          setError('Publishing failed: ' + err.message);
-          setIsLive(false);
-          setIsConnecting(false);
-        };
-
-        socket.on('connect', handleConnect);
-        socket.on('disconnect', handleDisconnect);
-        socket.on('publishError', handlePublishError);
-
-        if (socket.connected) {
+        
+        // Check if we're already live - this means we're just switching cameras
+        if (isLive && Object.keys(peerConnections.current).length > 0) {
+          // If we're already live, just replace the media tracks in existing connections
+          // instead of re-publishing to the channel
+          if (isDevMode()) console.debug('BroadcastWebRTC already live, replacing media tracks instead of republishing');
+          replaceTracks(stream);
+        } 
+        // Not already live, need to publish
+        else if (socket.connected) {
+          // Call handleConnect to publish for the first time
+          if (isDevMode()) console.debug('BroadcastWebRTC stream ready with socket connected, publishing for first time');
           handleConnect();
         } else {
+          // Wait for socket connection
           setIsConnecting(true);
+          if (isDevMode()) console.debug('BroadcastWebRTC stream ready but socket not connected, waiting for connect event');
         }
-
-        return () => {
-          socket.off('connect', handleConnect);
-          socket.off('disconnect', handleDisconnect);
-          socket.off('publishError', handlePublishError);
-        };
       }
     } catch (err) {
       console.error('Media access error:', err);
@@ -381,24 +433,6 @@ export default function BroadcastWebRTC({ config, socket }) {
     }
   }
 
-  // Removing copyURLToClipboard function
-
-  const disconnectStream = () => {
-    if (socket) {
-      socket.disconnect();
-      setIsLive(false);
-      setIsConnecting(false);
-      
-      // Clean up peer connections
-      Object.values(peerConnections.current).forEach(pc => {
-        if (pc) pc.close();
-      });
-      peerConnections.current = {};
-      setConnectedPeers(0); // Reset peer count when disconnecting
-      
-      if (isDevMode()) console.debug('BroadcastWebRTC Manually disconnected');
-    }
-  };
 
   // Force device refresh function
   const refreshDevices = async () => {
@@ -493,6 +527,103 @@ export default function BroadcastWebRTC({ config, socket }) {
     }
   };
 
+  // Replace both video and audio tracks in all peer connections
+  const replaceTracks = (newStream) => {
+    if (!newStream || Object.keys(peerConnections.current).length === 0) return;
+
+    if (isDevMode()) console.debug(
+      'BroadcastWebRTC Replacing media tracks in',
+      Object.keys(peerConnections.current).length, 
+      'peer connections'
+    );
+
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    const newAudioTrack = newStream.getAudioTracks()[0];
+    
+    if (!newVideoTrack && !newAudioTrack) {
+      console.error('BroadcastWebRTC No media tracks found in new stream');
+      return;
+    }
+
+    // Replace the tracks in each peer connection
+    Object.values(peerConnections.current).forEach(pc => {
+      const senders = pc.getSenders();
+      
+      // Handle video track replacement
+      if (newVideoTrack) {
+        const videoSender = senders.find(sender => 
+          sender.track && sender.track.kind === 'video'
+        );
+        
+        if (videoSender) {
+          videoSender.replaceTrack(newVideoTrack)
+            .then(() => {
+              if (isDevMode()) console.debug('BroadcastWebRTC Successfully replaced video track');
+              
+              // Apply bitrate limit if configured
+              if (config.stream?.videoBitrate) {
+                const setVideoParams = async () => {
+                  try {
+                    const params = videoSender.getParameters();
+                    if (!params.encodings) params.encodings = [{}];
+                    params.encodings.forEach(encoding => {
+                      // Convert kbps to bps
+                      encoding.maxBitrate = config.stream.videoBitrate * 1000;
+                    });
+                    await videoSender.setParameters(params);
+                  } catch (err) {
+                    console.error('BroadcastWebRTC Failed to set video bitrate:', err);
+                  }
+                };
+                setVideoParams();
+              }
+            })
+            .catch(err => console.error('BroadcastWebRTC Error replacing video track:', err));
+        }
+      }
+      
+      // Handle audio track replacement
+      if (newAudioTrack) {
+        const audioSender = senders.find(sender => 
+          sender.track && sender.track.kind === 'audio'
+        );
+        
+        if (audioSender) {
+          audioSender.replaceTrack(newAudioTrack)
+            .then(() => {
+              if (isDevMode()) console.debug('BroadcastWebRTC Successfully replaced audio track');
+              
+              // Make sure audio isn't muted if we were unmuted before
+              if (!audioMuted) {
+                newAudioTrack.enabled = true;
+              } else {
+                newAudioTrack.enabled = false;
+              }
+              
+              // Apply bitrate limit if configured
+              if (config.stream?.audioBitrate) {
+                const setAudioParams = async () => {
+                  try {
+                    const params = audioSender.getParameters();
+                    if (!params.encodings) params.encodings = [{}];
+                    params.encodings.forEach(encoding => {
+                      // Convert kbps to bps
+                      encoding.maxBitrate = config.stream.audioBitrate * 1000;
+                    });
+                    await audioSender.setParameters(params);
+                  } catch (err) {
+                    console.error('BroadcastWebRTC Failed to set audio bitrate:', err);
+                  }
+                };
+                setAudioParams();
+              }
+            })
+            .catch(err => console.error('BroadcastWebRTC Error replacing audio track:', err));
+        }
+      }
+    });
+  };
+
   return (
     <div className="absolute inset-0 m-0 p-0 bg-black">
       {error ? (
@@ -549,22 +680,14 @@ export default function BroadcastWebRTC({ config, socket }) {
             </button>
           )}
           
-          {/* Connection Button - Moved up when no camera button is shown */}
+          {/* Connection Status Indicator - Moved up when no camera button is shown */}
           <div className={`absolute ${deviceList.length > 1 || forceAvailable ? 'top-36' : 'top-20'} right-5 flex flex-col items-center`}>
-            <button
-              onClick={() => {
-                if (isLive || isConnecting) {
-                  disconnectStream();
-                } else {
-                  socket.connect();
-                  setIsConnecting(true);
-                }
-              }}
-              className="p-3 rounded-full shadow-lg bg-black opacity-50 hover:opacity-90 text-white border border-gray-700/50 transition-opacity duration-200"
+            <div
+              className="p-3 opacity-70 text-white shadow-neutral-50"
               title={
                 isLive ? `Connected with ${connectedPeers} viewer${connectedPeers !== 1 ? 's' : ''}`
                 : isConnecting ? "Connecting..."
-                : "Connect"
+                : "Disconnected"
               }
             >
               {isLive ? 
@@ -574,9 +697,9 @@ export default function BroadcastWebRTC({ config, socket }) {
                 <WifiOff size={24} strokeWidth={2} className="text-red-500 " />
               }
               {isLive && (
-                <span className="text-xs font-bold mt-1 opacity-70 hover:opacity-100 transition-opacity">{connectedPeers}</span>
+                <span className="text-xs font-bold mt-1 opacity-70 transition-opacity text-center">{connectedPeers}</span>
               )}
-            </button>
+            </div>
           </div>
         </>
       )}

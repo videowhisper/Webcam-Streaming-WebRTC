@@ -1,6 +1,6 @@
 # Webcam Streaming WebRTC
 
-A modern React JS application for real-time WebRTC webcam video streaming: Broadcast camera live to multiple viewers. Public source code & build included.
+React JS application for real-time WebRTC webcam video streaming: Broadcast camera live to multiple viewers. Public source code & build included.
 
 [Live Demo](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/)
 
@@ -9,14 +9,16 @@ A modern React JS application for real-time WebRTC webcam video streaming: Broad
 ## Features
 
 - **Real-time WebRTC video streaming** with peer-to-peer connections
-- **Broadcast Mode**: Stream video from your camera to multiple viewers
-- **Play Mode**: Watch streams from broadcasters
-- **Camera Selection**: Switch between available camera devices
+- **Broadcast Mode**: Publish live video from your camera to multiple viewers
+- **Play Mode**: Watch livwe streams from broadcaster
+- **Camera Selection**: Switch/rotate between available camera devices (mobile friendly)
 - **Audio Controls**: Mute/unmute microphone in broadcast mode or audio in playback mode
 - **Connection Status Indicators**: Monitor connection state and viewer count
+- **Stream URL Sharing**: Easily share links to your channel
+- **Multiple Authentication Options**: Support for both token-based and account/user/pin authentication
+- **Autoplay**: Gracefully handles autoplay restrictions in modern browsers with Tap to Unmute / Play
+- **Error Handling**: Displays error messages for issues
 - **Responsive UI**: Built with Tailwind CSS
-- **Stream URL Sharing**: Easily share links to your streams
-- **Reconnection**: Handles on demand disconnect/reconnect
 
 ## Testing the Demo
 
@@ -47,11 +49,11 @@ Visit [https://demo.videowhisper.com/Webcam-Streaming-WebRTC/](https://demo.vide
 
 To install and run the application on your own server:
 
-### Using Pre-built Distribution
+### Deploy Pre-built Distribution (Demo)
 
 1. Download or build the distribution files (the `dist` folder)
 2. Upload the files from `dist` to a folder on your web server (Apache, Nginx, etc.)
-3. Create a `config.json` file in the root folder (or duplicate `unconfigured.json`) and update it with your streaming server details:
+3. Fuplicate `unconfigured.json` in the root folder and update it with your streaming server details:
 
 ```json
 {
@@ -60,8 +62,11 @@ To install and run the application on your own server:
     "view": "Broadcast",
     "enableGET": true,
     "showURL": true,
-    "vwsSocket": "wss://your-webrtc-server:3000",
-    "vwsToken": "your-token-here",
+    "videowhisperServer": {
+        "socket": "wss://your-webrtc-server:3000",  
+        "authentication": "token",
+        "token": "your-account-token-here"
+      },
     "stream": {
         "width": 640,
         "height": 360,
@@ -72,9 +77,10 @@ To install and run the application on your own server:
     "development": false
 }
 ```
-
-4. Replace `wss://your-webrtc-server:3000` and `your-token-here` with your VideoWhisper Server details (get a free account if you don't have own streaming server or account)
+4. Replace `wss://your-webrtc-server:3000` and `your-token-here` with your VideoWhisper Server details (get a free account if you don't have own streaming server or account - see Requirements below)
 5. Access the application through your web server
+
+*Warning*: This is a demo setup for development and testing purposes with publicly accessible configuration file. For production, you should implement more advanced integration where streaming settings are provided only to authenticated users and further restrictions are implemented on server side.
 
 ### Requirements
 
@@ -148,22 +154,20 @@ The viewer component receives and displays the broadcaster's stream:
 
 ## Configuration and Setup
 
-### Option 1: Using a private configuration file (recommended for development)
+### Demo: Using a configuration file (recommended for development)
 
 To keep your development configuration private and separate from the public repository:
 
-1. Edit `public/config.json` with your development server details
-2. This file is automatically added to `.gitignore` to prevent it from being published
+1. Copy `public/unconfigured.json` to `public/config.json`:
+2. Register for a free developer account at [WebRTCHost](https://webrtchost.com/hosting-plans/#WebRTC-Only) or setup your self-hosted [VideoWhisper Server](https://github.com/videowhisper/videowhisper-webrtc)
+3. Edit `public/config.json` and fill your development server details, set `deny` to `false` to allow access
+  This file is automatically added to `.gitignore` to prevent it from being published
 
 The application will:
 - First try to load `config.json` (your private config)
 - Fall back to `unconfigured.json` if not found
 
-### Option 2: Using the unconfigured configuration file
-
-1. A template configuration file is provided at `public/unconfigured.json`
-2. Register for a free developer account at [WebRTCHost](https://webrtchost.com/hosting-plans/#WebRTC-Only)
-3. Edit the file with your own server details and remove the `deny` property:
+Copy `unconfigured.json` to `config.json` file in the public folder with settings like:
 
 ```
 {
@@ -172,14 +176,34 @@ The application will:
     "view": "Broadcast",          // Initial view mode: "Broadcast" or "Play"
     "enableGET": true,            // Allow URL parameters to override config
     "showURL": true,              // Show URL sharing button
-    "vwsSocket": "wss://your-webrtc-server:3000",  // Your WebRTC server address
-    "vwsToken": "your-token-here"  // Your authentication token,
-    "deny": "Deny access to app" // for integrations deny message will prevent access when not logged in or configured
-    "development": false, // Set to true for development mode and troubleshooting, logging
+    
+    // Server configuration and authentication
+    "videowhisperServer": {
+        "socket": "wss://your-webrtc-server:3000",  // Your WebRTC server address
+        
+        // Authentication Option 1: Token-based authentication
+        "authentication": "token",
+        "token": "your-account-token-here",
+        
+        // Authentication Option 2: Account/User/Pin authentication
+        // "authentication": "pin",
+        // "account": "your-account-name",
+        // "pin": "user-pin",
+        // "user": "username"  // Optional, defaults to the "username" value above
+    },
+    
+    "stream": {
+        "width": 640,
+        "height": 360,
+        "framerate": 15,
+        "videoBitrate": 500,
+        "audioBitrate": 32
+    },
+    "development": false  // Set to true for development mode and troubleshooting/logging
 }
 ```
 
-### Option 3: Custom configuration or integration
+### Real Use: Custom configuration or integration
 
 You can embed the application in your website and provide custom configuration through the `window.videowhisperConfig` object:
 
@@ -188,8 +212,11 @@ You can embed the application in your website and provide custom configuration t
 window.videowhisperConfig = {
   configURL: "app-login.php" 
 } 
+</script>
 ```
-You can use an integration script that only provides access to authenticated site users.
+
+You can use an integration script that provides streaming server details only to authenticated site users.
+Further restrictions can be implemented on server side to limit access to streaming.
 
 ## Building and Development
 
@@ -261,7 +288,7 @@ To prepare for publishing:
 2. Update `unconfigured.json` with placeholder values and the `deny` property
 3. Update documentation as needed with any new configuration options
 
-## Server Communication API
+## Server Signaling
 
 ### Broadcaster to Server
 
@@ -282,18 +309,79 @@ To prepare for publishing:
 | Event | Description |
 |-------|-------------|
 | `message` | General WebRTC signaling data (offers, answers, candidates) |
-| `peers` | List of connected peers and ICE server configuration, for Broadcaster |
-| `peer` | Notification when a new peer joins, for Broadcaster |
+| `peers` | List of connected WebRTC peers and ICE server configuration, for Broadcaster |
+| `peer` | Notification when a new WebRTC peer joins, for Broadcaster |
 | `publishError` | Error notification for broadcasting issues, for Broadcaster |
-| `subscribeError` | Error notification for viewing issues, for Viewer  |
+| `subscribeError` | Error notification for playback issues, for Viewer  |
 
 ### WebRTC Message Types between Peers (messagePeer)
 
 | Type | Purpose |
 |------|---------|
-| `offer` | Initial connection offer from broadcaster to viewer |
+| `offer` | Initial connection offer from broadcaster to viewer, includes and ICE config |
 | `answer` | Viewer's response to an offer |
 | `candidate` | ICE candidate for connection establishment |
+
+### 2 Authentication Methods
+
+The application supports two methods for authenticating with the VideoWhisper WebRTC Server:
+
+#### 1. Token-Based Authentication (Development/Internal Use)
+
+```json
+"videowhisperServer": {
+    "socket": "wss://your-webrtc-server:3000",
+    "authentication": "token",
+    "token": "your-account-token-here"
+}
+```
+
+This method connects to the server using a token that validates against a static token or an account token in the server's database. 
+Because the token is disclosed to client browser, it is recommended to use this method only for development or internal use.
+
+#### 2. Account/User/Pin Authentication (Production Use)
+
+```json
+"videowhisperServer": {
+    "socket": "wss://your-webrtc-server:3000",
+    "authentication": "pin",
+    "account": "your-account-name",
+    "pin": "user-pin",
+    "user": "username"  // Optional, defaults to the "username" value
+}
+```
+
+This method authenticates using an account name, username, and PIN. The server needs to have the account configured with a `loginURL` property. The server will validate the credentials by making a POST request to this URL. 
+As authentication Pin is per client, this is the recommended method for public production use.
+
+A sample `loginURL` endpoint is provided in `public/login.json` for reference/testing:
+```json
+ {
+   "login": true, 
+   "message": "Login accepted for user"
+   }
+```
+
+The server will make a POST request to this URL with these parameters (that an integration script can use to authenticate user and return login true/false):
+```json
+{
+   "account": "account-name", 
+   "token": "account-token", 
+   "user": "username", 
+   "pin": "user-pin"
+}
+```
+
+When implementing channel names take into consideration that server supports a `restrictPublish` setting per account for quck publishing authorization:
+- `no` - no restrictions
+- `username` - channel name should match the username
+- `prefix` - channel name should start with the username
+This is a quick way to prevent hijacking of channels by other users. Prefix can be used when you want to implement random channel names.
+
+Benefits of using account/user/pin authentication:
+- No need to store sensitive account tokens in client-side configurations
+- Better user-specific access control
+- Ability to implement custom authentication logic through the loginURL endpoint
 
 ## Styling and UI
 Project uses [Tailwind CSS](https://tailwindcss.com/) for styling and [Vite](https://vite.dev). The UI is responsive and designed to work well on various screen sizes. For documentation on how to customize the styles, refer to the [Tailwind CSS + Vite documentation](https://tailwindcss.com/docs/installation/using-vite).
@@ -304,4 +392,5 @@ Project uses [Tailwind CSS](https://tailwindcss.com/) for styling and [Vite](htt
 - **Tailwind CSS**: Utility-first CSS framework for styling
 - **Socket.IO**: Library for real-time communication between client and server
 - **WebRTC**: Technology for real-time peer-to-peer communication
-- **VideoWhisper WebRTC Server**: Signaling server for WebRTC connections
+- **Zustand**: State management library for React
+- **VideoWhisper Server**: Signaling server for WebRTC connections

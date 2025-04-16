@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Wifi, WifiOff, Loader, Volume2, VolumeX } from "lucide-react";
+import { Wifi, WifiOff, Loader, Volume2, VolumeX, ArrowRight, Play } from "lucide-react";
 import { isDevMode } from '../config/devMode';
 
 export default function PlayWebRTC({ config, channel, socket }) {
@@ -8,6 +8,12 @@ export default function PlayWebRTC({ config, channel, socket }) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState(null);
   const [audioMuted, setAudioMuted] = useState(false);
+  
+  // Autoplay status tracking
+  const [showTapToUnmute, setShowTapToUnmute] = useState(false);
+  const [showTapToPlay, setShowTapToPlay] = useState(false);
+  const [autoplayAttempted, setAutoplayAttempted] = useState(false);
+  const unmuteTipTimeoutRef = useRef(null);
   
   // WebRTC related states and refs
   const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });
@@ -38,65 +44,21 @@ export default function PlayWebRTC({ config, channel, socket }) {
   useEffect(() => {
     if (!socket || !channel) return;
 
-    const handleConnect = () => {
-      if (isDevMode()) console.debug("PlayWebRTC socket connected — subscribing to", channel, "as", config.username || "Viewer");
-      socket.emit("subscribe", config.username || "Viewer", channel);
-      setIsConnecting(true);
-      // Reset reconnect attempts on successful connection
-      reconnectAttempts.current = 0;
-    };
-
-    const handleDisconnect = () => {
-      if (isDevMode()) console.debug("PlayWebRTC socket disconnected");
-      setIsLive(false);
-      setIsConnecting(false);
-      cleanupWebRTC();
-    };
-
-    const handleSubscribeError = (data) => {
-      const errMsg = data?.message || "Subscription failed.";
-      if (isDevMode()) console.debug("PlayWebRTC Subscribe error:", errMsg);
-      setError(errMsg);
-      setIsLive(false);
-      setIsConnecting(false);
-    };
-
-    // Handle WebRTC messages from the server
-    const handleMessage = (message) => {
-      if (isDevMode()) console.debug("PlayWebRTC Message received:", message);
-      
-      if (message.type === "offer") {
-        // Store the broadcaster's ID
-        broadcasterId.current = message.from;
-        
-        // Save ICE server configuration if provided
-        if (message.peerConfig) {
-          setPeerConfig(message.peerConfig);
-        }
-        
-        // Set up WebRTC connection
-        handleOfferMessage(message);
-      } 
-      else if (message.type === "candidate" && peerConnection.current && message.candidate) {
-        // Add incoming ICE candidates
-        peerConnection.current.addIceCandidate(new RTCIceCandidate(message.candidate))
-          .catch(error => console.error("Error adding received ICE candidate", error));
-      }
-    };
-
+    // Setup socket event handlers
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("subscribeError", handleSubscribeError);
     socket.on("message", handleMessage);
 
+    // Check initial socket state
     if (socket.connected) {
       handleConnect();
     } else {
       setIsConnecting(true);
-      socket.connect();
     }
 
     return () => {
+      // Clean up listeners
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
       socket.off("subscribeError", handleSubscribeError);
@@ -105,6 +67,55 @@ export default function PlayWebRTC({ config, channel, socket }) {
       cleanupWebRTC();
     };
   }, [socket, channel, config.username]);
+
+  // Handle socket connection
+  const handleConnect = () => {
+    if (isDevMode()) console.debug("PlayWebRTC socket connected — subscribing to", channel, "as", config.username || "Viewer");
+    socket.emit("subscribe", config.username || "Viewer", channel);
+    setIsConnecting(true);
+    // Reset reconnect attempts on successful connection
+    reconnectAttempts.current = 0;
+  };
+
+  // Handle socket disconnection
+  const handleDisconnect = () => {
+    if (isDevMode()) console.debug("PlayWebRTC socket disconnected");
+    setIsLive(false);
+    setIsConnecting(false);
+    cleanupWebRTC();
+  };
+
+  // Handle subscription error
+  const handleSubscribeError = (data) => {
+    const errMsg = data?.message || "Subscription failed.";
+    if (isDevMode()) console.debug("PlayWebRTC Subscribe error:", errMsg);
+    setError(errMsg);
+    setIsLive(false);
+    setIsConnecting(false);
+  };
+
+  // Handle socket messages
+  const handleMessage = (message) => {
+    if (isDevMode()) console.debug("PlayWebRTC Message received:", message);
+    
+    if (message.type === "offer") {
+      // Store the broadcaster's ID
+      broadcasterId.current = message.from;
+      
+      // Save ICE server configuration if provided
+      if (message.peerConfig) {
+        setPeerConfig(message.peerConfig);
+      }
+      
+      // Set up WebRTC connection
+      handleOfferMessage(message);
+    } 
+    else if (message.type === "candidate" && peerConnection.current && message.candidate) {
+      // Add incoming ICE candidates
+      peerConnection.current.addIceCandidate(new RTCIceCandidate(message.candidate))
+        .catch(error => console.error("Error adding received ICE candidate", error));
+    }
+  };
 
   // Process an offer message from the broadcaster
   const handleOfferMessage = async (message) => {
@@ -157,15 +168,17 @@ export default function PlayWebRTC({ config, channel, socket }) {
       // Clean up first
       cleanupWebRTC();
       
-      // Wait a bit before trying to reconnect
+      // Wait a bit before trying to resubscribe
       setTimeout(() => {
-        if (!socket.connected) {
-          socket.connect();
-        } else {
-          // Re-subscribe to the channel
+        if (socket?.connected) {
+          // Only re-subscribe to the channel if socket is connected
           socket.emit("subscribe", config.username || "Viewer", channel);
+          setIsConnecting(true);
+        } else {
+          if (isDevMode()) console.debug("PlayWebRTC Socket not connected during reconnection attempt");
+          // Reset UI state to connecting while waiting for socket to reconnect naturally
+          setIsConnecting(true);
         }
-        setIsConnecting(true);
       }, 1000);
     } else {
       if (isDevMode()) console.debug("PlayWebRTC max reconnection attempts reached");
@@ -183,12 +196,65 @@ export default function PlayWebRTC({ config, channel, socket }) {
       
       if (videoRef.current && event.streams && event.streams[0]) {
         videoRef.current.srcObject = event.streams[0];
+        setIsLive(true); // Set live state immediately when we have tracks
         
-        // Try to play the video automatically
-        videoRef.current.play().catch(err => {
-          console.warn("PlayWebRTC Auto-play failed:", err);
-          // Show play button or notification to user
-        });
+        // Implement tiered autoplay approach
+        const attemptAutoplay = () => {
+          // Step 1: Try unmuted autoplay first (preferred)
+          if (isDevMode()) console.debug("PlayWebRTC Attempting unmuted autoplay");
+          
+          videoRef.current.muted = false;
+          setAudioMuted(false);
+          
+          videoRef.current.play()
+            .then(() => {
+              // Successful unmuted autoplay
+              if (isDevMode()) console.debug("PlayWebRTC Unmuted autoplay succeeded");
+              setError(null);
+              setShowTapToUnmute(false);
+              setShowTapToPlay(false);
+              setAutoplayAttempted(true);
+            })
+            .catch(err => {
+              // Step 2: If unmuted fails, try muted autoplay
+              console.debug("PlayWebRTC Unmuted autoplay failed:", err);
+              
+              if (isDevMode()) console.debug("PlayWebRTC Attempting muted autoplay");
+              videoRef.current.muted = true;
+              setAudioMuted(true);
+              setShowTapToUnmute(true);
+              
+              videoRef.current.play()
+                .then(() => {
+                  // Muted autoplay succeeded
+                  if (isDevMode()) console.debug("PlayWebRTC Muted autoplay succeeded");
+                  setError(null);
+                  setShowTapToPlay(false);
+                  setShowTapToUnmute(true);
+                  setAutoplayAttempted(true);
+                  
+                  // Set timeout to hide the unmute tooltip after 5 seconds
+                  if (unmuteTipTimeoutRef.current) {
+                    clearTimeout(unmuteTipTimeoutRef.current);
+                  }
+                  unmuteTipTimeoutRef.current = setTimeout(() => {
+                    setShowTapToUnmute(false);
+                  }, 5000);
+                })
+                .catch(mutedErr => {
+                  // Step 3: All autoplay attempts failed, show central play button
+                  console.debug("PlayWebRTC Muted autoplay also failed:", mutedErr);
+                  setShowTapToPlay(true);
+                  setShowTapToUnmute(false);
+                  setAutoplayAttempted(true);
+                });
+            });
+        };
+        
+        // Start the tiered autoplay process if not already attempted
+        if (!autoplayAttempted) {
+          attemptAutoplay();
+        }
       }
     };
     
@@ -400,36 +466,9 @@ export default function PlayWebRTC({ config, channel, socket }) {
       tracks.forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
-  };
-
-  const disconnectStream = () => {
-    if (socket) {
-      socket.disconnect();
-      setIsLive(false);
-      setIsConnecting(false);
-      
-      // Ensure we completely clean up WebRTC resources
-      cleanupWebRTC();
-      
-      // Reset the broadcasterId so we don't retain any stale connection info
-      broadcasterId.current = null;
-      
-      if (isDevMode()) console.debug("PlayWebRTC Disconnected manually");
-    }
-  };
-
-  const connectStream = () => {
-    // Reset connection state and cleanup first
-    setIsConnecting(true);
-    reconnectAttempts.current = 0;
     
-    // Ensure clean slate before reconnecting
-    cleanupWebRTC();
-    
-    // Connect to server
-    socket.connect();
-    
-    if (isDevMode()) console.debug("PlayWebRTC Manual connect attempt");
+    // Reset the broadcasterId so we don't retain any stale connection info
+    broadcasterId.current = null;
   };
 
   // Toggle audio mute function
@@ -437,6 +476,16 @@ export default function PlayWebRTC({ config, channel, socket }) {
     if (videoRef.current) {
       videoRef.current.muted = !videoRef.current.muted;
       setAudioMuted(videoRef.current.muted);
+      
+      // Hide the unmute tooltip when the mute button is clicked
+      if (showTapToUnmute) {
+        setShowTapToUnmute(false);
+        // Clear timeout to prevent it from being hidden twice
+        if (unmuteTipTimeoutRef.current) {
+          clearTimeout(unmuteTipTimeoutRef.current);
+          unmuteTipTimeoutRef.current = null;
+        }
+      }
       
       if (isDevMode()) {
         console.debug('PlayWebRTC Audio ' + (videoRef.current.muted ? 'muted' : 'unmuted'));
@@ -456,7 +505,7 @@ export default function PlayWebRTC({ config, channel, socket }) {
             }
           });
         } catch (err) {
-          console.warn('PlayWebRTC Unable to modify audio transceiver direction:', err);
+          console.debug('PlayWebRTC Unable to modify audio transceiver direction:', err);
           // Fallback to just muting the audio element, which we've already done
         }
       } else if (peerConnection.current && !videoRef.current.muted) {
@@ -470,7 +519,7 @@ export default function PlayWebRTC({ config, channel, socket }) {
             }
           });
         } catch (err) {
-          console.warn('PlayWebRTC Unable to modify audio transceiver direction:', err);
+          console.debug('PlayWebRTC Unable to modify audio transceiver direction:', err);
           // Video is already unmuted from earlier, so no need for additional fallback
         }
       }
@@ -518,29 +567,76 @@ export default function PlayWebRTC({ config, channel, socket }) {
         }
       </button>
 
-      {/* Connection Button */}
-      <button
-        onClick={() => {
-          if (isLive || isConnecting) {
-            disconnectStream();
-          } else {
-            connectStream();
+      {/* Tap to Unmute indicator - shows to the left of the mute button when video is playing but muted */}
+      {showTapToUnmute && (
+        <div className="absolute top-6 right-20 flex items-center">
+          <div className="bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-sm">
+            Tap to unmute
+          </div>
+          {/* Arrow pointing to the mute button using Lucide ArrowRight */}
+          <ArrowRight size={16} className="text-white ml-2" />
+        </div>
+      )}
+
+      {/* Connection Status Indicator */}
+        <div
+          className="absolute top-20 right-5 px-4 py-2 opacity-70 text-white group flex items-center gap-2"
+          title={
+            isLive ? "Connected to Stream"
+            : isConnecting ? "Connecting..."
+            : "Disconnected"
           }
-        }}
-        className="absolute top-20 right-5 p-3 rounded-full shadow-lg bg-black opacity-50 hover:opacity-90 text-white border border-gray-700/50 transition-opacity duration-200 group"
-        title={
-          isLive ? "Disconnect Stream"
-          : isConnecting ? "Connecting..."
-          : "Connect"
-        }
-      >
-        {isLive ? 
-          <Wifi size={24} strokeWidth={2} className="text-green-500" /> : 
-          isConnecting ? 
-          <Loader size={24} strokeWidth={2} className="text-yellow-500 animate-spin" /> : 
-          <WifiOff size={24} strokeWidth={2} className="text-red-500" />
-        }
-      </button>
+        >
+          {isLive ? 
+            <Wifi size={20} strokeWidth={2} className="text-green-500" /> : 
+            isConnecting ? 
+            <Loader size={20} strokeWidth={2} className="text-yellow-500 animate-spin" /> : 
+            <WifiOff size={20} strokeWidth={2} className="text-red-500" />
+          }
+        </div>
+        
+        {/* Centered Tap to Play button - shows when all autoplay attempts fail */}
+      {showTapToPlay && (
+        <div 
+          className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 cursor-pointer"
+          onClick={() => {
+            if (videoRef.current) {
+              videoRef.current.muted = false; // Try to play unmuted first
+              setAudioMuted(false);
+              
+              videoRef.current.play()
+                .then(() => {
+                  // Successful play
+                  setShowTapToPlay(false);
+                  setError(null);
+                })
+                .catch(err => {
+                  console.debug("PlayWebRTC Manual unmuted play failed, trying muted:", err);
+                  
+                  // If unmuted fails, try muted
+                  videoRef.current.muted = true;
+                  setAudioMuted(true);
+                  setShowTapToUnmute(true);
+                  
+                  videoRef.current.play()
+                    .then(() => {
+                      // Muted play succeeded
+                      setShowTapToPlay(false);
+                    })
+                    .catch(mutedErr => {
+                      console.error("PlayWebRTC All play attempts failed:", mutedErr);
+                      setError("Could not play video: " + mutedErr.message);
+                    });
+                });
+            }
+          }}
+        >
+          <div className="bg-black bg-opacity-70 text-white p-6 rounded-full flex flex-col items-center animate-pulse">
+            <Play size={48} strokeWidth={2} />
+            <span className="mt-2 font-medium">Tap to Play</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
