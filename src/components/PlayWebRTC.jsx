@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Wifi, WifiOff, Loader, Volume2, VolumeX, ArrowRight, Play } from "lucide-react";
 import { isDevMode } from '../config/devMode';
+import useAppStore from '../store/appStore';
 
-export default function PlayWebRTC({ config, channel, socket }) {
+export default function PlayWebRTC({ channel }) {
+  const { config, socket } = useAppStore();
   const videoRef = useRef(null);
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -29,17 +31,13 @@ export default function PlayWebRTC({ config, channel, socket }) {
     connection: { state: '', quality: 'good' }
   });
   const statsInterval = useRef(null);
-  const statsRef = useRef({ 
-    resolution: '', 
+  const statsRef = useRef({
+    resolution: '',
     fps: 0,
     lastVideoBytes: 0,
     lastAudioBytes: 0,
-    lastTimestamp: 0
+    lastTimestamp: Date.now()
   });
-
-  // States for button hover effects
-  const [audioButtonHovered, setAudioButtonHovered] = useState(false);
-  const [connectionButtonHovered, setConnectionButtonHovered] = useState(false);
 
   useEffect(() => {
     if (!socket || !channel) return;

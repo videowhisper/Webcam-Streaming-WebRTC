@@ -63,12 +63,23 @@ export const initializeVideoWhisperConnection = (config) => {
     // Update the store with the error
     try {
       const store = useAppStore.getState();
-      store.setSocketError("Could not create socket connection to VideoWhisper Server");
+      store.setErrorMessage("Could not create socket connection to VideoWhisper Server");
     } catch (e) {
       console.error("VideoWhisperServer: Failed to update store with error", e);
     }
     return null;
   }
+  
+  //save socket to store
+  try {
+    const store = useAppStore.getState();
+    store.setSocket(socket) // Save the socket to the store for global access
+    // store.setSocketConnecting(true); // Set connecting state
+  }
+  catch (e) {
+    console.error("VideoWhisperServer: Failed to save socket to store", e);
+  }
+
   
   // Connect the server (event handlers are already set up in createSocket)
   createdSocket.connect();
@@ -113,7 +124,7 @@ export const createSocket = (config) => {
        authObj.user = videowhisperServer.user || config.username; // Use provided user or fallback to username
        
        if (isDevMode()) {
-         console.log("VideoWhisperServer: Using account/pin authentication");
+         console.log("VideoWhisperServer: Using account/pin authentication", authObj);
        }
 
      } else if (videowhisperServer.token) {
@@ -166,19 +177,9 @@ function setupSocketEventHandlers(sock) {
     if (isDevMode()) console.debug("VideoWhisperServer: Socket disconnected:", reason);
     store.setSocketConnected(false);
     
-    // Show error for any disconnect, but use appropriate messaging
-    if (reason === 'io server disconnect') {
-      // Server initiated disconnect (usually intentional from server side)
-      store.setSocketError(`Server closed connection`);
-      store.setView('Error'); // Explicitly set Error view
-    } else if (reason === 'io client disconnect') {
-      // Client initiated disconnect (usually intentional from client side)
-      store.setSocketError(`Disconnected from server`);
-      store.setView('Error'); // Explicitly set Error view
-    } else {
-      // Unexpected disconnection
-      store.setSocketError(`Connection lost: ${reason}`);
-    }
+    // update error view and message
+    store.setErrorMessage(`VideoWhisper Server connection lost: ${reason}`);
+    store.setView('Error'); // Explicitly set Error view
     
     // Call any registered disconnection handlers
     disconnectionHandlers.forEach(handler => handler(reason));
@@ -188,7 +189,7 @@ function setupSocketEventHandlers(sock) {
   sock.on("connect_error", (err) => {
     const errorMessage = `Connection error: ${err.message || 'Could not connect to server'}`;
     if (isDevMode()) console.error("VideoWhisperServer: Socket connection error:", err);
-    store.setSocketError(errorMessage);
+    store.setErrorMessage(errorMessage);
     
     // Call any registered error handlers
     errorHandlers.forEach(handler => handler(err));
@@ -198,7 +199,7 @@ function setupSocketEventHandlers(sock) {
   sock.on("error", (err) => {
     const errorMessage = `Socket error: ${err.message || 'Unknown error'}`;
     if (isDevMode()) console.error("VideoWhisperServer: Socket error:", err);
-    store.setSocketError(errorMessage);
+    store.setErrorMessage(errorMessage);
     
     // Call any registered error handlers
     errorHandlers.forEach(handler => handler(err));

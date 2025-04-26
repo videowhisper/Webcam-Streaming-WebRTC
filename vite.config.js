@@ -7,7 +7,18 @@ import path from 'path';
 
 export default defineConfig({
   // Add base path for subfolder deployment
-  base: './',
+  base: './', 
+    server: {
+    // only rewrite URLs **without** a file extension
+    historyApiFallback: {
+      disableDotRule: false   // ← leave this false so files with extensions are not rewritten
+    }
+  },
+  preview: {
+    historyApiFallback: {
+      disableDotRule: false
+    }
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -15,8 +26,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'favicon.ico'],
       manifest: {
-        name: 'WebRTC Webcam Streamer',
-        short_name: 'WebcamStreamer',
+        name: 'Webcam Streaming WebRTC',
+        short_name: 'Cam Stream',
         // Update start_url to use relative path
         start_url: './',
         display: 'standalone',

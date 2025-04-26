@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, Tv, ArrowDown } from 'lucide-react';
 import BroadcastWebRTC from './BroadcastWebRTC';
+import useAppStore from '../store/appStore';
 
-export default function Broadcast({ config, socket }) {
+export default function Broadcast() {
+  const { config, socket } = useAppStore();
   const [copied, setCopied] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const tooltipTimerRef = useRef(null);
   const hasClickedRef = useRef(false);
-  
-  // Keep hover states as fallback
-  const [copyButtonHovered, setCopyButtonHovered] = useState(false);
-  const [openButtonHovered, setOpenButtonHovered] = useState(false);
 
   useEffect(() => {
     if (socket) {
@@ -82,7 +80,7 @@ export default function Broadcast({ config, socket }) {
 
   return (
     <div className="w-full h-full bg-black text-white">
-      <BroadcastWebRTC config={config} socket={socket} />
+      <BroadcastWebRTC />
       
       {/* URL Actions Floating Panel - Moved to bottom right */}
       <div className="absolute bottom-5 right-5 flex flex-row items-center space-x-2 z-20">

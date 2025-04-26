@@ -1,10 +1,13 @@
-import React, { useEffect } from 'react'; 
+import React from 'react'; 
 import PlayWebRTC from './PlayWebRTC';
+import useAppStore from '../store/appStore';
 
-export default function Play({ config, socket }) {
+export default function Play() {
+  const { config, socket } = useAppStore();
+  
   return (
     <div className="w-full h-full bg-black text-white">
-      <PlayWebRTC config={config} channel={config.channel} socket={socket} />
+      <PlayWebRTC channel={config.channel} />
     </div>
   );
 }

@@ -1,36 +1,18 @@
 /*
-Technology stack for this app includes Taiwind CSS, Vite, Lucide Icons, React, Socket.IO, WebRTC, VideoWhisper Server, Vite Plugin PWA.
-https://github.com/tailwindlabs/tailwindcss 
-https://github.com/vitejs/vite 
-https://github.com/lucide-icons/lucide
-https://github.com/videowhisper/videowhisper-webrtc 
-https://tailwindcss.com/docs/installation/using-vite
+Technology stack includes: Zustand, React, Tailwind CSS, Vite, Lucide Icons, VideoWhisper Server, Socket.IO .
 */
 
 import React, { useEffect } from "react";
-import { Loader, AlertCircle } from "lucide-react";
-import Broadcast from "./components/Broadcast";
-import Play from "./components/Play";
+import { Loader, AlertCircle, Settings } from "lucide-react"; // Import Settings icon
+import Broadcast from "./components/Broadcast"; // Corrected path
+import Play from "./components/Play";       // Corrected path
+import Debugger from "./views/Debugger"; // Updated import path
+import BroadcastChat from "./views/BroadcastChat"; // Import the new BroadcastChat view
+import PlayChat from "./views/PlayChat"; // Import the new PlayChat view
+import Chat from "./views/Chat"; // Import the new Chat view
 import { isDevMode } from "./config/devMode";
 import useAppStore from "./store/appStore";
-
-
-// Watermark component to be displayed in all views
-const Watermark = () => (
-  <a 
-    href="https://consult.videowhisper.com" 
-    target="_blank" 
-    rel="noopener noreferrer"
-    title="Consult VideoWhisper"
-    className="absolute top-2 left-2 z-50"
-  >
-    <img 
-      src="./watermark.png" 
-      alt="VideoWhisper" 
-      className="h-16 opacity-70 hover:opacity-100 transition-opacity"
-    />
-  </a>
-);
+import Watermark from "./components/Watermark"; // Import the Watermark component
 
 export default function App() {
   // Get states and actions from the Zustand store
@@ -38,7 +20,8 @@ export default function App() {
     config, 
     currentView, 
     configLoaded,
-    getErrorMessage 
+    getErrorMessage,
+    setView // Correctly destructure setView instead of setCurrentView
   } = useAppStore();
   
   // Socket reference
@@ -100,14 +83,14 @@ export default function App() {
           
           // Ensure we show the error view even if socket initialization fails
           const store = useAppStore.getState();
-          store.setSocketError("Failed to initialize VideoWhisper socket connection");
+          store.setErrorMessage("Failed to initialize VideoWhisper socket connection");
         }
       } catch (err) {
         console.error("App Failed to initialize socket:", err);
         
         // Ensure we show the error view on initialization exceptions
         const store = useAppStore.getState();
-        store.setSocketError(`Socket initialization error: ${err.message || 'Unknown error'}`);
+        store.setErrorMessage(`Socket initialization error: ${err.message || 'Unknown error'}`);
       }
     };
     
@@ -131,7 +114,7 @@ export default function App() {
   const handleConsultSupport = () => {
     window.open("https://consult.videowhisper.com", "_blank");
   };
-  
+
   // Shared message component for errors, denied access and unknown view
   const MessageView = ({ title, message, icon }) => (
     <div className="absolute inset-0 flex items-center justify-center">
@@ -161,8 +144,18 @@ export default function App() {
     switch (currentView) {
       case "Broadcast":
         return <Broadcast config={config} socket={socket} />;
+      case "BroadcastChat":
+        return <BroadcastChat />;
+      case "PlayChat":
+        return <PlayChat />;
+      case "Chat":
+        // Pass socket prop to Chat view
+        return <Chat socket={socket} />;
+
       case "Play":
         return <Play config={config} socket={socket} />;
+      case "Debugger": // Add the Debugger case
+        return <Debugger />;
       case "Denied":
         return <MessageView 
           title="Unauthorized" 
@@ -198,3 +191,11 @@ export default function App() {
     </>
   );
 }
+
+/* Technology stack (context) for reference:
+Tailwind CSS  https://github.com/tailwindlabs/tailwindcss 
+Vite https://github.com/vitejs/vite 
+Lucide Icons https://github.com/lucide-icons/lucide
+Zustand https://github.com/pmndrs/zustand
+VideoWhisper WebRTC https://github.com/videowhisper/videowhisper-webrtc 
+*/

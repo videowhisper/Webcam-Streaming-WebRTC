@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { isDevMode } from '../config/devMode';
 import { Wifi, WifiOff, SwitchCamera, Loader, Mic, MicOff, RefreshCcw } from 'lucide-react';
+import useAppStore from '../store/appStore';
 
-export default function BroadcastWebRTC({ config, socket }) {
+export default function BroadcastWebRTC() {
+  const { config, socket } = useAppStore();
   const videoRef = useRef(null);
   const hasMounted = useRef(false);
   const [error, setError] = useState(null);
@@ -10,17 +12,9 @@ export default function BroadcastWebRTC({ config, socket }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [connectedPeers, setConnectedPeers] = useState(0); // Add state for counting connected peers
   const [audioMuted, setAudioMuted] = useState(false);
-  const audioTrackRef = useRef(null);
   const [forceAvailable, setForceAvailable] = useState(false);
-  const [refreshDevicesHovered, setRefreshDevicesHovered] = useState(false);
-  
-  // States for button hover effects
-  const [micButtonHovered, setMicButtonHovered] = useState(false);
-  const [cameraButtonHovered, setCameraButtonHovered] = useState(false);
-  const [connectionButtonHovered, setConnectionButtonHovered] = useState(false);
   
   // WebRTC peer connections state
   const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });

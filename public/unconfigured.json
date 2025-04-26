@@ -6,9 +6,12 @@
     "enableGET": true,
     "showURL": true,
     "videowhisperServer":{
-        "socket": "REPLACE_WITH_YOUR_SERVER_URL",
+        "socket": "WSS_VIDEOWHISPER_SERVER:PORT",
         "authentication": "token",
-        "token": "REPLACE_WITH_YOUR_TOKEN"
+        "token": "ACCOUNT_TOKEN",
+        "account": "ACCOUNT_NAME",
+        "user": "USER_NAME",
+        "pin": "USER_PIN"
     },
     "stream": {
         "width":640,

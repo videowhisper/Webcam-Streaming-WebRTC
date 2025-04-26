@@ -3,6 +3,14 @@ https://tailwindcss.com/docs/installation/using-vite
 */
 @import "tailwindcss";
 
+#root {
+  height: 100%; /* Or height: 100vh; */
+  margin: 0;
+  padding: 0;
+  /* Ensure #root can grow if body is flex */
+  width: 100%; /* Add width 100% */
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -29,10 +37,11 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
+  /* Remove display: flex and place-items: center */
+  /* display: flex; */
+  /* place-items: center; */
   min-width: 320px;
-  min-height: 100vh;
+  height: 100vh; /* Change min-height to height */
 }
 
 h1 {

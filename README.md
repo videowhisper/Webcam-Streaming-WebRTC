@@ -10,10 +10,11 @@ React JS application for real-time WebRTC webcam video streaming: Broadcast came
 
 - **Real-time WebRTC video streaming** with peer-to-peer connections
 - **Broadcast Mode**: Publish live video from your camera to multiple viewers
-- **Play Mode**: Watch livwe streams from broadcaster
+- **Play Mode**: Watch live streams from broadcaster
+- **Integrated Chat**: Real-time text chat within broadcast and play views.
 - **Camera Selection**: Switch/rotate between available camera devices (mobile friendly)
 - **Audio Controls**: Mute/unmute microphone in broadcast mode or audio in playback mode
-- **Connection Status Indicators**: Monitor connection state and viewer count
+- **Streaming Status Indicators**: Monitor streaming state and viewer count
 - **Stream URL Sharing**: Easily share links to your channel
 - **Multiple Authentication Options**: Support for both token-based and account/user/pin authentication
 - **Autoplay**: Gracefully handles autoplay restrictions in modern browsers with Tap to Unmute / Play
@@ -36,14 +37,12 @@ Visit [https://demo.videowhisper.com/Webcam-Streaming-WebRTC/](https://demo.vide
 5. Click the TV button in the bottom right to open playback in a new tab
 5. Use the URL copy buttons in the bottom right to share your stream
 6. Note the viewer count on the connection button once connected (green)
-7. Test the disconnect/reconnect functionality by clicking the connection button
 
 ### Testing as a Viewer
 1. From a broadcaster session, open the URL in a new tab 
 2. Optionally copy the URL and open in another browser or device or share with a friend
 3. Playback should start automatically 
-4. Test the disconnect/reconnect functionality by clicking the connection (WiFi) button
-
+4. Test muting/unmuting the audio
 
 ## Installation Instructions
 
@@ -59,7 +58,7 @@ To install and run the application on your own server:
 {
     "channel": "YourChannelName",
     "username": "{generate}",
-    "view": "Broadcast",
+    "view": "BroadcastChat",
     "enableGET": true,
     "showURL": true,
     "videowhisperServer": {
@@ -109,9 +108,19 @@ The application connects to the [VideoWhisper WebRTC Server](https://github.com/
 - Provide ICE server configuration for NAT traversal (STUN/TURN configuration)
 - Handle access and limitations for streaming
 
+
+### Key Views
+The application supports multiple views that can be set in the configuration file or through URL `view` parameter:
+- `BroadcastChat`: Camera controls, room chat, share buttons (default)
+- `PlayChat`: Player with room chat
+- `Broadcast`: Simple broadcaster view with camera selection and broadcasting controls, no room & chat
+- `Play`: Simple player view, no room & chat
+- `Chat`: Text chat-only room view
+- `Debugger`: Only available in development mode, when a troubleshooting button is also available to switch at runtime
+
 ### Key Components
 
-#### BroadcastWebRTC
+#### BroadcastWebRTC & Broadcast 
 
 The broadcaster component captures local media and establishes peer connections with viewers:
 
@@ -124,9 +133,9 @@ The broadcaster component captures local media and establishes peer connections 
   - Tracks connected peer count
 - **Camera Controls**: Provides UI to switch between available camera devices
 
-#### PlayWebRTC
+#### PlayWebRTC & Play
 
-The viewer component receives and displays the broadcaster's stream:
+The player component receives and displays the live stream:
 
 - **Session Management**: Subscribes to channels using the signaling server
 - **WebRTC Handling**:
@@ -137,19 +146,32 @@ The viewer component receives and displays the broadcaster's stream:
 - **Stream Statistics**: Collects and displays info about video resolution, bitrate, and FPS
 - **Auto-reconnection**: Attempts to reconnect when connections fail
 
-### Connection Flow
+#### Chat Components
 
-1. The server connection is established using Socket.IO
-2. **Broadcast flow**:
-   - Publisher connects to the server and publishes to a channel
-   - WebRTC peer connections are created for each viewer that joins
+- **`ChatInterface`**: Main container for the chat UI, handling message sending and receiving.
+- **`ChatDisplay`**: Displays incoming chat messages with auto-scroll and fade effects.
+- **`ChatInput`**: Provides the text input field and send button.
+- **`ChatToggle`**: Button to show/hide the chat interface.
+
+### Key Hooks
+- **broadcastWebRTC**: Custom hook for managing the broadcaster's WebRTC connections, including media capture and signaling.
+- **playWebRTC**: Custom hook for managing the player's WebRTC connections, including session management and media reception.
+
+### WebRTC Signaling Flow
+
+1. The server connection is established using Socket.IO, either by using token or account/user/pin authentication. Room support requires account/user/pin authentication.
+
+2. **Broadcaster flow**:
+   - Broadcaster publishes to a channel (directly or in a room after joining)
+   - WebRTC peer connections is created and offer is sent for each channel viewer
    - Media tracks are added to each peer connection
    - ICE candidates are exchanged via the signaling server
 
-3. **Play flow**:
-   - Viewer connects to the server and subscribes to a channel
+3. **Player flow**:
+   - Viewer joins a room or subscribes to a channel (when not using rooms)
    - Receives offer from the broadcaster
    - Generates an answer and sends it back
+   - ICE candidates are exchanged via the signaling server
    - Processes incoming media tracks and renders the video
 
 ## Configuration and Setup
@@ -173,7 +195,7 @@ Copy `unconfigured.json` to `config.json` file in the public folder with setting
 {
     "channel": "{generate}",      // Will auto-generate a channel name
     "username": "{generate}",     // Will auto-generate a username
-    "view": "Broadcast",          // Initial view mode: "Broadcast" or "Play"
+    "view": "BroadcastChat",          // Initial view mode, see Views section below
     "enableGET": true,            // Allow URL parameters to override config
     "showURL": true,              // Show URL sharing button
     
@@ -189,7 +211,7 @@ Copy `unconfigured.json` to `config.json` file in the public folder with setting
         // "authentication": "pin",
         // "account": "your-account-name",
         // "pin": "user-pin",
-        // "user": "username"  // Optional, defaults to the "username" value above
+        // "user": "username" // Optional, defaults to the "username" value above
     },
     
     "stream": {
@@ -202,6 +224,7 @@ Copy `unconfigured.json` to `config.json` file in the public folder with setting
     "development": false  // Set to true for development mode and troubleshooting/logging
 }
 ```
+
 
 ### Real Use: Custom configuration or integration
 
@@ -290,14 +313,25 @@ To prepare for publishing:
 
 ## Server Signaling
 
+### Room Participant to Server
+| Event | Parameters | Description |
+|-------|-----------|-------------|
+|`roomJoin` | `{room}` |  Joins a specific room/channel |
+|`roomLeave` | `{room}` |  Leaves a specific room/channel |
+|`message` | `{from, target, type, content, ...}` | Sends a message to a specific target (peer or room) |
+
+Rooms require account/user/pin authentication to join. Joining room also handles channel subscriptions for players.
+
 ### Broadcaster to Server
 
 | Event | Parameters | Description |
 |-------|-----------|-------------|
 | `publish` | `(username, channel, params)` | Starts broadcasting to the specified channel |
 | `messagePeer` | `{from, target, type, content, ...}` | Sends WebRTC signaling data to viewers |
+| `roomPublish` | `{room, channel, parameters}` |  Publishes a channel in room |
+| `roomUnpublish` | `{room, channel}` |  Stops publishing a room channel |
 
-### Viewer to Server
+### Player (Viewer) to Server
 
 | Event | Parameters | Description |
 |-------|-----------|-------------|
@@ -313,6 +347,7 @@ To prepare for publishing:
 | `peer` | Notification when a new WebRTC peer joins, for Broadcaster |
 | `publishError` | Error notification for broadcasting issues, for Broadcaster |
 | `subscribeError` | Error notification for playback issues, for Viewer  |
+| `roomUpdate` | Room updates that may include |
 
 ### WebRTC Message Types between Peers (messagePeer)
 
@@ -322,6 +357,14 @@ To prepare for publishing:
 | `answer` | Viewer's response to an offer |
 | `candidate` | ICE candidate for connection establishment |
 
+### roomUpdate elements
+Room updates are sent to participants in the room and may include the following elements:
+| Element | Description |
+|---------|-------------|
+| `error` | Error message, in example for trying to use room without previously joining |
+| `messages` | List of messages |
+| `messageNew` | New message in room |
+
 ### 2 Authentication Methods
 
 The application supports two methods for authenticating with the VideoWhisper WebRTC Server:
@@ -330,7 +373,7 @@ The application supports two methods for authenticating with the VideoWhisper We
 
 ```json
 "videowhisperServer": {
-    "socket": "wss://your-webrtc-server:3000",
+    "socket": "wss://VideoWhisper-Server:3000",
     "authentication": "token",
     "token": "your-account-token-here"
 }
@@ -343,13 +386,14 @@ Because the token is disclosed to client browser, it is recommended to use this 
 
 ```json
 "videowhisperServer": {
-    "socket": "wss://your-webrtc-server:3000",
+    "socket": "wss://VideoWhisper-Server:3000",
     "authentication": "pin",
-    "account": "your-account-name",
-    "pin": "user-pin",
-    "user": "username"  // Optional, defaults to the "username" value
+    "account": "account-name",
+    "user": "user-name",
+    "pin": "user-pin"
 }
 ```
+`videowhisperServer.user` defaults to `username` value in the config.
 
 This method authenticates using an account name, username, and PIN. The server needs to have the account configured with a `loginURL` property. The server will validate the credentials by making a POST request to this URL. 
 As authentication Pin is per client, this is the recommended method for public production use.

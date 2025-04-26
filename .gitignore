@@ -28,6 +28,7 @@ build
 *.njsproj
 *.sln
 *.sw?
+.history/*
 
 # Private configuration files
 /public/config.json
