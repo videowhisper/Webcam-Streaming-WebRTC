@@ -6,20 +6,38 @@ React JS application for real-time WebRTC webcam video streaming: Broadcast came
 
 ![Webcam Streaming WebRTC Illustration](images/illustration.jpg)
 
-## Features
+## Index
 
-- **Real-time WebRTC video streaming** with peer-to-peer connections
+- [Features](#features)
+- [Testing the Demo](#testing-the-demo)
+- [Installation Instructions](#installation-instructions)
+- [Requirements](#requirements)
+- [Quick Demo Links](#quick-demo-links)
+- [Technical Implementation](#technical-implementation)
+- [Configuration and Setup](#configuration-and-setup)
+- [Building and Development](#building-and-development)
+- [Development Best Practices](#development-best-practices)
+- [Server Signaling](#server-signaling)
+- [Authentication Methods](#authentication-methods)
+- [Styling and UI](#styling-and-ui)
+- [Technologies Used](#technologies-used)
+
+
+## Key Features
+
+- **Real-time WebRTC video streaming** 100% web based, with peer-to-peer connections
 - **Broadcast Mode**: Publish live video from your camera to multiple viewers
 - **Play Mode**: Watch live streams from broadcaster
-- **Integrated Chat**: Real-time text chat within broadcast and play views.
+- **Video Chat**: Real-time text chat within broadcast and play views.
 - **Camera Selection**: Switch/rotate between available camera devices (mobile friendly)
 - **Audio Controls**: Mute/unmute microphone in broadcast mode or audio in playback mode
-- **Streaming Status Indicators**: Monitor streaming state and viewer count
-- **Stream URL Sharing**: Easily share links to your channel
+- **Stream Status Indicator**: Monitor streaming state and viewer count
+- **Room URL Sharing**: Easily share links to your channel
 - **Multiple Authentication Options**: Support for both token-based and account/user/pin authentication
 - **Autoplay**: Gracefully handles autoplay restrictions in modern browsers with Tap to Unmute / Play
 - **Error Handling**: Displays error messages for issues
-- **Responsive UI**: Built with Tailwind CSS
+- **Responsive UI**: Built with Tailwind CSS, tested on mobile and desktop browsers
+
 
 ## Testing the Demo
 
@@ -29,7 +47,7 @@ You can test the application without installation by visiting the official demo:
 Visit [https://demo.videowhisper.com/Webcam-Streaming-WebRTC/](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/) to try out the application.
 
 
-### Testing as a Broadcaster
+### Testing as a Broadcaster 
 1. Access the demo link above
 2. Allow camera and microphone permissions when prompted
 3. The app should start broadcasting automatically
@@ -37,12 +55,16 @@ Visit [https://demo.videowhisper.com/Webcam-Streaming-WebRTC/](https://demo.vide
 5. Click the TV button in the bottom right to open playback in a new tab
 5. Use the URL copy buttons in the bottom right to share your stream
 6. Note the viewer count on the connection button once connected (green)
+7. Test sending chat messages, toggle chat visibility
 
-### Testing as a Viewer
-1. From a broadcaster session, open the URL in a new tab 
-2. Optionally copy the URL and open in another browser or device or share with a friend
-3. Playback should start automatically 
-4. Test muting/unmuting the audio
+### Testing as a Viewer (Playback)
+1. From a broadcaster session, open the URL in a new tab or
+2. Copy the URL and open in another browser/device or share with a friend
+3. Playback should start automatically when page opens 
+4. You may need to click Tap to Play/Unmute if autoplay is restricted by browser
+5. Test muting/unmuting the audio
+6. Test sending chat messages, toggle chat visibility
+
 
 ## Installation Instructions
 
@@ -52,7 +74,7 @@ To install and run the application on your own server:
 
 1. Download or build the distribution files (the `dist` folder)
 2. Upload the files from `dist` to a folder on your web server (Apache, Nginx, etc.)
-3. Fuplicate `unconfigured.json` in the root folder and update it with your streaming server details:
+3. Duplicate `unconfigured.json` in the root folder and update it with your streaming server details:
 
 ```json
 {
@@ -79,20 +101,21 @@ To install and run the application on your own server:
 4. Replace `wss://your-webrtc-server:3000` and `your-token-here` with your VideoWhisper Server details (get a free account if you don't have own streaming server or account - see Requirements below)
 5. Access the application through your web server
 
-*Warning*: This is a demo setup for development and testing purposes with publicly accessible configuration file. For production, you should implement more advanced integration where streaming settings are provided only to authenticated users and further restrictions are implemented on server side.
+*Warning*: This is a demo setup for development and testing purposes with publicly accessible configuration file. For production, you should implement the more advanced authentication and integration methods where streaming settings are provided only to authenticated users, authentication is per user and further restrictions are implemented on server side.
 
 ### Requirements
 
 - A web server with HTTPS (required for WebRTC in production)
 - Access to a VideoWhisper Server that handles signaling, STUN/TURN (self-hosted [VideoWhisper Server](https://github.com/videowhisper/videowhisper-webrtc) or a *free* plan from [WebRTCHost](https://webrtchost.com/hosting-plans/#Streaming-Only) )
-- Modern browser with WebRTC support (Chrome, Firefox, Safari, Edge, Brave)
+- Modern browser with WebRTC support (Chrome, Safari, Edge, Brave, Firefox)
+- Consult VideoWhisper support if you need a free consultation or clarifications: [https://consult.videowhisper.com/](https://consult.videowhisper.com/)
 
 ### Quick Demo Links
 
 When `enableGET: true` is set in the config, you can use URL parameters to quickly access broadcast/playback for specific channels:
 
-- Broadcasting: `/?view=Broadcast&channel=MyChannel`
-- Viewing: `/?view=Play&channel=MyChannel`
+- Broadcasting: `/?view=BroadcastChat&channel=MyChannel`
+- Viewing: `/?view=PlayChat&channel=MyChannel`
 
 
 ## Technical Implementation
@@ -409,7 +432,6 @@ A sample `loginURL` endpoint is provided in `public/login.json` for reference/te
 The server will make a POST request to this URL with these parameters (that an integration script can use to authenticate user and return login true/false):
 ```json
 {
-   "account": "account-name", 
    "token": "account-token", 
    "user": "username", 
    "pin": "user-pin"

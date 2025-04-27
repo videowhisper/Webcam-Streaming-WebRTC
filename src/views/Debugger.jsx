@@ -43,10 +43,10 @@ const Debugger = () => {
           className="w-full p-2 bg-gray-800 text-white rounded border border-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
         >
           <option value="Debugger">Debugger</option>
-          <option value="Broadcast">Broadcast</option>
           <option value="BroadcastChat">Broadcast Chat</option>
-          <option value="Play">Play</option>
           <option value="PlayChat">Play Chat</option>
+          <option value="Broadcast">Broadcast</option>
+          <option value="Play">Play</option>
           <option value="Chat">Chat</option>
           <option value="Loading">Loading</option>
           <option value="Error">Error</option>
