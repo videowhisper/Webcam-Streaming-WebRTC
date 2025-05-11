@@ -5,10 +5,22 @@ import { VitePWA } from 'vite-plugin-pwa';
 import fs from 'fs';
 import path from 'path';
 
+// Get current date and time for build timestamp
+const now = new Date();
+const buildTimestamp = now.toISOString();
+const buildDate = now.toLocaleDateString();
+const buildTime = now.toLocaleTimeString();
+
 export default defineConfig({
   // Add base path for subfolder deployment
   base: './', 
-    server: {
+  define: {
+    // Make build information available to the app
+    __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),
+    __BUILD_DATE__: JSON.stringify(buildDate),
+    __BUILD_TIME__: JSON.stringify(buildTime),
+  },
+  server: {
     // only rewrite URLs **without** a file extension
     historyApiFallback: {
       disableDotRule: false   // ← leave this false so files with extensions are not rewritten

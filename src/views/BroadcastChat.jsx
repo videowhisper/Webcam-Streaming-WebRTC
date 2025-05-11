@@ -1,7 +1,7 @@
 // BroadcastChat view component
 import React, { useEffect, useRef, useState, useCallback } from 'react'; // Added useState, useCallback
 import { Copy, Check, Tv, ArrowDown, Wifi, WifiOff, SwitchCamera, Loader, Mic, MicOff, RefreshCcw } from 'lucide-react';
-import useBroadcastWebRTC from '../hooks/broadcastWebRTC';
+import broadcastWebRTC from '../hooks/broadcastWebRTC';
 import useAppStore from '../store/appStore';
 // Removed import of useBroadcastChatStore
 import ChatInterface from '../components/ChatInterface';
@@ -56,7 +56,7 @@ export default function BroadcastChat() {
     stopBroadcast,
     rotateCamera,
     deviceList // Destructure deviceList here
-  } = useBroadcastWebRTC({
+  } = broadcastWebRTC({
     onPeerCountChange: handlePeerCountChange // Use local state updater
   });
 

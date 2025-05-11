@@ -139,7 +139,7 @@ The application supports multiple views that can be set in the configuration fil
 - `Broadcast`: Simple broadcaster view with camera selection and broadcasting controls, no room & chat
 - `Play`: Simple player view, no room & chat
 - `Chat`: Text chat-only room view
-- `Debugger`: Only available in development mode, when a troubleshooting button is also available to switch at runtime
+- `Debugger`: Only available in development mode, when a troubleshooting button is also available to switch at runtime.
 
 ### Key Components
 
@@ -329,6 +329,11 @@ When developing or contributing to this project:
 3. **Configuration Template**: Update `unconfigured.json` if you add new configuration options
 4. **Never Commit Credentials**: Ensure your private WebRTC server details are never committed to the repository
 
+Use develoment mode for testing and debugging. The `development` property in `config.json` should be set to `true` during development. This enables:
+- Verbose console logging for debugging
+- Troubleshooting button in the UI to switch between views
+- Force relay for WebRTC connections (useful for testing NAT traversal and TURN server functionality)
+
 To prepare for publishing:
 1. Ensure your private configuration (`config.json`) is added to `.gitignore`
 2. Update `unconfigured.json` with placeholder values and the `deny` property
@@ -370,7 +375,7 @@ Rooms require account/user/pin authentication to join. Joining room also handles
 | `peer` | Notification when a new WebRTC peer joins, for Broadcaster |
 | `publishError` | Error notification for broadcasting issues, for Broadcaster |
 | `subscribeError` | Error notification for playback issues, for Viewer  |
-| `roomUpdate` | Room updates that may include |
+| `roomUpdate` | Room updates that may include participants, messages, messageNew|
 
 ### WebRTC Message Types between Peers (messagePeer)
 
@@ -387,6 +392,7 @@ Room updates are sent to participants in the room and may include the following 
 | `error` | Error message, in example for trying to use room without previously joining |
 | `messages` | List of messages |
 | `messageNew` | New message in room |
+| `participants` | List of participants in the room |
 
 ### 2 Authentication Methods
 

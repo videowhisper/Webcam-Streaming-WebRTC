@@ -1,6 +1,7 @@
 import React from 'react';
 import useAppStore from '../store/appStore';
 import { isDevMode } from '../config/devMode';
+import { getFormattedBuildInfo, getVersionString } from "../config/buildInfo"; // Import build info
 
 const Debugger = () => {
   const { 
@@ -8,6 +9,7 @@ const Debugger = () => {
     currentView, 
     errorMessage, 
     configError,
+    peerConfig,
     setView // Correctly destructure setView instead of setCurrentView
   } = useAppStore();
   
@@ -79,6 +81,14 @@ const Debugger = () => {
         <pre className="whitespace-pre-wrap break-all bg-gray-800 p-3 rounded text-sm overflow-auto max-h-60">
           {JSON.stringify(config, null, 2)}
         </pre>
+      </div>
+
+      <div className="p-4 bg-gray-900 rounded-lg shadow-lg mt-6">
+        <h2 className="text-lg font-medium mb-3 text-gray-300 border-b border-gray-700 pb-2">Build Information</h2>
+        <div className="grid grid-cols-2 gap-2">
+          <span className="text-gray-400">Version:</span> <span>{getVersionString()}</span>
+          <span className="text-gray-400">Build:</span> <span>{getFormattedBuildInfo()}</span>
+        </div>
       </div>
     </div>
   );

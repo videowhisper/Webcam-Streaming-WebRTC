@@ -4,7 +4,7 @@ import { isDevMode } from '../config/devMode';
 import useAppStore from '../store/appStore';
 
 export default function PlayWebRTC({ channel }) {
-  const { config, socket } = useAppStore();
+  const { config, socket, peerConfig, setPeerConfig } = useAppStore();
   const videoRef = useRef(null);
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -18,11 +18,17 @@ export default function PlayWebRTC({ channel }) {
   const unmuteTipTimeoutRef = useRef(null);
   
   // WebRTC related states and refs
-  const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });
   const peerConnection = useRef(null);
   const broadcasterId = useRef(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 3;
+  
+  // Ensure we always have access to the latest peerConfig
+  if (!PlayWebRTC.peerConfigRef) {
+    PlayWebRTC.peerConfigRef = { current: peerConfig };
+  }
+  // Keep ref updated
+  PlayWebRTC.peerConfigRef.current = peerConfig;
   
   // Stats tracking
   const [stats, setStats] = useState({
@@ -94,7 +100,7 @@ export default function PlayWebRTC({ channel }) {
 
   // Handle socket messages
   const handleMessage = (message) => {
-    if (isDevMode()) console.debug("PlayWebRTC Message received:", message);
+    if (isDevMode()) console.debug("PlayWebRTC Message received:", message.type, message);
     
     if (message.type === "offer") {
       // Store the broadcaster's ID
@@ -110,6 +116,8 @@ export default function PlayWebRTC({ channel }) {
     } 
     else if (message.type === "candidate" && peerConnection.current && message.candidate) {
       // Add incoming ICE candidates
+      if (isDevMode()) console.debug("PlayWebRTC Adding ICE candidate from broadcaster:", message.candidate);
+
       peerConnection.current.addIceCandidate(new RTCIceCandidate(message.candidate))
         .catch(error => console.error("Error adding received ICE candidate", error));
     }
@@ -118,24 +126,53 @@ export default function PlayWebRTC({ channel }) {
   // Process an offer message from the broadcaster
   const handleOfferMessage = async (message) => {
     try {
+
       // Always clean up any existing peer connection first
       cleanupWebRTC();
-      
-      // Create a new peer connection with the provided config
-      peerConnection.current = new RTCPeerConnection(peerConfig);
-      
-      // Set up event handlers for the peer connection
-      setupPeerConnectionHandlers();
-      
+
+      // Use peerConfig from the offer message if present, otherwise fallback to latest ref
+      const offerPeerConfig = message.peerConfig || PlayWebRTC.peerConfigRef.current;
+      if (isDevMode()) console.debug("PlayWebRTC Handling offer from broadcaster:", message.from, offerPeerConfig);
+
+      // Capture broadcasterId in closure for ICE candidate handler
+      const thisBroadcasterId = message.from;
+
+      // Create a new peer connection with the peerConfig from the offer (if available)
+      peerConnection.current = new RTCPeerConnection(offerPeerConfig);
+
+      // Debug ICE gathering state
+      peerConnection.current.onicegatheringstatechange = () => {
+        if (isDevMode()) console.debug("PlayWebRTC onicegatheringstatechange:", peerConnection.current.iceGatheringState);
+      };
+
+      // Set up event handlers for the peer connection (except onicecandidate)
+      setupPeerConnectionHandlers(false); // pass false to skip onicecandidate
+
+      // Set up ICE candidate handler with captured broadcasterId
+      peerConnection.current.onicecandidate = (event) => {
+        if (isDevMode()) console.debug("PlayWebRTC onicecandidate event:", event.candidate, thisBroadcasterId);
+        if (event.candidate && thisBroadcasterId) {
+          let message = {
+            type: "candidate",
+            from: config.username || "Viewer",
+            target: thisBroadcasterId,
+            channel: config.channel,
+            candidate: event.candidate
+          };
+          if (isDevMode()) console.debug("PlayWebRTC onicecandidate Sending ICE candidate to broadcaster", message);
+          socket.emit("messagePeer", message);
+        }
+      };
+
       // Set the remote description from the offer
       await peerConnection.current.setRemoteDescription(new RTCSessionDescription(message.content));
-      
+
       // Create and send an answer
       const answer = await peerConnection.current.createAnswer();
       await peerConnection.current.setLocalDescription(answer);
-      
+
       if (isDevMode()) console.debug("PlayWebRTC Sending answer to:", message.from);
-      
+
       // Send the answer back through the signaling server
       socket.emit("messagePeer", {
         type: "answer",
@@ -143,14 +180,14 @@ export default function PlayWebRTC({ channel }) {
         target: message.from,
         content: answer
       });
-      
+
       // Start collecting stats
       startStatsCollection();
-      
+
     } catch (err) {
       console.error("Error handling offer:", err);
       setError(`Connection error: ${err.message}`);
-      
+
       // Try to reconnect if within attempt limits
       handleReconnect();
     }
@@ -185,7 +222,8 @@ export default function PlayWebRTC({ channel }) {
   };
 
   // Set up all event listeners for the peer connection
-  const setupPeerConnectionHandlers = () => {
+  // Optionally skip setting onicecandidate (handled in handleOfferMessage)
+  const setupPeerConnectionHandlers = (setIceCandidateHandler = true) => {
     if (!peerConnection.current) return;
     
     // Handle incoming media tracks
@@ -229,7 +267,6 @@ export default function PlayWebRTC({ channel }) {
                   setError(null);
                   setShowTapToPlay(false);
                   setShowTapToUnmute(true);
-                  setAutoplayAttempted(true);
                   
                   // Set timeout to hide the unmute tooltip after 5 seconds
                   if (unmuteTipTimeoutRef.current) {
@@ -256,19 +293,23 @@ export default function PlayWebRTC({ channel }) {
       }
     };
     
-    // Handle ICE candidates
-    peerConnection.current.onicecandidate = (event) => {
-      if (event.candidate && broadcasterId.current) {
-        if (isDevMode()) console.debug("PlayWebRTC Sending ICE candidate to broadcaster");
-        
-        socket.emit("messagePeer", {
-          type: "candidate",
-          from: config.username || "Viewer",
-          target: broadcasterId.current, 
-          candidate: event.candidate
-        });
-      }
-    };
+    // ICE candidate handler is now set in handleOfferMessage with correct broadcasterId
+    if (setIceCandidateHandler) {
+      peerConnection.current.onicecandidate = (event) => {
+        if (isDevMode()) console.debug("PlayWebRTC onicecandidate event:", event.candidate, broadcasterId.current);
+        if (event.candidate && broadcasterId.current) {
+          let message = {
+            type: "candidate",
+            from: config.username || "Viewer",
+            target: broadcasterId.current, 
+            channel: config.channel,
+            candidate: event.candidate
+          };
+          if (isDevMode()) console.debug("PlayWebRTC onicecandidate Sending ICE candidate to broadcaster", message);
+          socket.emit("messagePeer", message);
+        }
+      };
+    }
     
     // Monitor connection state changes
     peerConnection.current.onconnectionstatechange = () => {
@@ -306,7 +347,7 @@ export default function PlayWebRTC({ channel }) {
     // Monitor ICE connection state
     peerConnection.current.oniceconnectionstatechange = () => {
       if (!peerConnection.current) return;
-      if (isDevMode()) console.debug("PlayWebRTC ICE connection state:", peerConnection.current.iceConnectionState);
+      if (isDevMode()) console.debug("PlayWebRTC oniceconnectionstatechange", peerConnection.current.iceConnectionState);
       
       // If ICE fails, try to reconnect
       if (peerConnection.current.iceConnectionState === 'failed') {

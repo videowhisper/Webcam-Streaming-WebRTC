@@ -4,9 +4,10 @@ import { Wifi, WifiOff, SwitchCamera, Loader, Mic, MicOff, RefreshCcw } from 'lu
 import useAppStore from '../store/appStore';
 
 export default function BroadcastWebRTC() {
-  const { config, socket } = useAppStore();
+  const { config, socket, peerConfig, setPeerConfig } = useAppStore();
   const videoRef = useRef(null);
   const hasMounted = useRef(false);
+  const hasPublishedRef = useRef(false); // Ref to track if we have already published
   const [error, setError] = useState(null);
   const [deviceList, setDeviceList] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
@@ -17,7 +18,6 @@ export default function BroadcastWebRTC() {
   const [forceAvailable, setForceAvailable] = useState(false);
   
   // WebRTC peer connections state
-  const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });
   const peerConnections = useRef({});
   const currentUsername = useRef(null);
   const currentChannel = useRef(null);
@@ -62,6 +62,8 @@ export default function BroadcastWebRTC() {
       // This only runs when the component is fully unmounting
       cleanupPeerConnections();
       cleanupSocketListeners();
+      // Reset the published state when unmounting
+      hasPublishedRef.current = false;
     };
   }, []);
 
@@ -112,6 +114,12 @@ export default function BroadcastWebRTC() {
   const handleConnect = () => {
     if (!localStream.current || !socket || !config.channel || !config.username) return;
     
+    // Check if we've already published to prevent duplicate publish calls
+    if (hasPublishedRef.current) {
+      if (isDevMode()) console.debug('BroadcastWebRTC: handleConnect called but already published, skipping.');
+      return;
+    }
+    
     const streamSettings = localStream.current.getVideoTracks()[0]?.getSettings();
     if (!streamSettings) return;
     
@@ -131,6 +139,9 @@ export default function BroadcastWebRTC() {
     // Store current channel and username
     currentUsername.current = config.username;
     currentChannel.current = config.channel;
+    
+    // Mark as published
+    hasPublishedRef.current = true;
   };
 
   // Handle socket disconnect
@@ -141,6 +152,9 @@ export default function BroadcastWebRTC() {
     
     // Clean up peer connections on disconnect
     cleanupPeerConnections();
+    
+    // Reset the published state when disconnected
+    hasPublishedRef.current = false;
   };
 
   // Handle publish error
@@ -149,6 +163,7 @@ export default function BroadcastWebRTC() {
     setError('Publishing failed: ' + err.message);
     setIsLive(false);
     setIsConnecting(false);
+    hasPublishedRef.current = false; // Reset publish state
   };
 
   // Handle socket messages
@@ -221,8 +236,15 @@ export default function BroadcastWebRTC() {
 
     if (isDevMode()) console.debug('BroadcastWebRTC Adding peer connection for:', peerID);
 
-    // Create new peer connection
-    const pc = new RTCPeerConnection(peerConfig);
+    // Always use the latest peerConfig via ref to avoid stale ICE config
+    if (!BroadcastWebRTC.peerConfigRef) {
+      BroadcastWebRTC.peerConfigRef = { current: peerConfig };
+    }
+    // Keep ref updated
+    BroadcastWebRTC.peerConfigRef.current = peerConfig;
+
+    if (isDevMode()) console.debug('BroadcastWebRTC Creating peer connection for:', peerID, 'with config:', BroadcastWebRTC.peerConfigRef.current);
+    const pc = new RTCPeerConnection(BroadcastWebRTC.peerConfigRef.current);
     peerConnections.current[peerID] = pc;
 
     // Track senders to apply bitrate limits

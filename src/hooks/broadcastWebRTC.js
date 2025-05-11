@@ -5,11 +5,13 @@ import { isDevMode } from '../config/devMode';
 import useAppStore from '../store/appStore';
 
 // Remove roomName from props, it will be derived from config.channel
-export default function useWebRTC({
+export default function broadcastWebRTC({
   onPeerCountChange = () => {},
 }) {
   // Get all configuration from appStore
   const config = useAppStore(state => state.config);
+  const peerConfig = useAppStore(state => state.peerConfig);
+  const setPeerConfig = useAppStore(state => state.setPeerConfig);
 
   // Use a ref for socket to always have the latest reference
   // This helps prevent stale closures
@@ -19,7 +21,7 @@ export default function useWebRTC({
   const socket = useAppStore(state => state.socket);
   useEffect(() => {
     socketRef.current = socket;
-    if (isDevMode()) console.debug('useWebRTC: Socket reference updated:', socket ? 'available' : 'null');
+    if (isDevMode()) console.debug('broadcastWebRTC: Socket reference updated:', socket ? 'available' : 'null');
   }, [socket]);
 
   // Get configuration values
@@ -36,10 +38,13 @@ export default function useWebRTC({
   const [forceAvailable, setForceAvailable] = useState(false);
 
   // WebRTC state
-  const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });
+  // Remove the local peerConfig state as we're now using it from appStore
   const peerConnections = useRef({});
   const localStream = useRef(null);
   const videoRef = useRef(null);
+
+  // Ref to hold the latest peerConfig to avoid stale closures
+  const peerConfigRef = useRef(peerConfig);
 
   // Only keep refs for mutable objects that we don't want to trigger re-renders
   const streamSettingsRef = useRef(streamSettings);
@@ -48,6 +53,12 @@ export default function useWebRTC({
   useEffect(() => {
     streamSettingsRef.current = streamSettings;
   }, [streamSettings]);
+
+  // Keep peerConfigRef updated
+  useEffect(() => {
+    peerConfigRef.current = peerConfig;
+    if (isDevMode()) console.debug('broadcastWebRTC: peerConfigRef updated:', peerConfigRef.current);
+  }, [peerConfig]);
 
   // Set video ref to be used by the component
   const setVideoElement = useCallback((element) => {
@@ -62,12 +73,12 @@ export default function useWebRTC({
 
     onPeerCountChange(count);
 
-    if (isDevMode()) console.debug('useWebRTC: Connected peers count updated:', count);
+    if (isDevMode()) console.debug('broadcastWebRTC: Connected peers count updated:', count);
   }, [onPeerCountChange]);
 
   // Clean up all peer connections
   const cleanupPeerConnections = useCallback(() => {
-    if (isDevMode()) console.debug('useWebRTC: Cleaning up all peer connections');
+    if (isDevMode()) console.debug('broadcastWebRTC: Cleaning up all peer connections');
     Object.values(peerConnections.current).forEach(pc => {
       if (pc) pc.close();
     });
@@ -77,7 +88,7 @@ export default function useWebRTC({
 
   // Handle socket disconnect
   const handleDisconnect = useCallback(() => {
-    if (isDevMode()) console.debug('useWebRTC: Socket disconnected');
+    if (isDevMode()) console.debug('broadcastWebRTC: Socket disconnected');
     setIsLive(false);
     setIsConnecting(false);
 
@@ -87,7 +98,7 @@ export default function useWebRTC({
 
   // Reinstate handlePublishError
   const handlePublishError = useCallback((err) => {
-    console.error('useWebRTC: Publish error received:', err);
+    console.error('broadcastWebRTC: Publish error received:', err);
     setError(`Publish Error: ${err.message || 'Unknown error'}`);
     setIsLive(false);
     setIsConnecting(false);
@@ -100,13 +111,13 @@ export default function useWebRTC({
   const replaceTracks = useCallback((newStream) => {
     if (!newStream || Object.keys(peerConnections.current).length === 0) return;
 
-    if (isDevMode()) console.debug('useWebRTC: Replacing tracks in existing peer connections');
+    if (isDevMode()) console.debug('broadcastWebRTC: Replacing tracks in existing peer connections');
 
     const newVideoTrack = newStream.getVideoTracks()[0];
     const newAudioTrack = newStream.getAudioTracks()[0];
 
     if (!newVideoTrack) {
-      console.error('useWebRTC: No video track available in new stream');
+      console.error('broadcastWebRTC: No video track available in new stream');
       return;
     }
 
@@ -116,10 +127,10 @@ export default function useWebRTC({
 
       pc.getSenders().forEach(sender => {
         if (sender.track.kind === 'video' && newVideoTrack) {
-          if (isDevMode()) console.debug('useWebRTC: Replacing video track');
+          if (isDevMode()) console.debug('broadcastWebRTC: Replacing video track');
           sender.replaceTrack(newVideoTrack);
         } else if (sender.track.kind === 'audio' && newAudioTrack) {
-          if (isDevMode()) console.debug('useWebRTC: Replacing audio track');
+          if (isDevMode()) console.debug('broadcastWebRTC: Replacing audio track');
           sender.replaceTrack(newAudioTrack);
         }
       });
@@ -129,18 +140,18 @@ export default function useWebRTC({
   // Handle socket connection and room logic
   const handleConnect = useCallback(() => {
     const currentSocket = socketRef.current;
-    // Use direct config values
+    // Always use the latest config values inside the function
     const room = config?.channel;
 
     if (!localStream.current || !currentSocket || !room || !username) { // Still need username check for context
-      if (isDevMode()) console.debug('useWebRTC: Cannot join room/publish - missing stream, socket, room, or user');
+      if (isDevMode()) console.debug('broadcastWebRTC: Cannot join room/publish - missing stream, socket, room, or user');
       return;
     }
 
     const streamSettings = localStream.current.getVideoTracks()[0]?.getSettings();
     if (!streamSettings) {
-       if (isDevMode()) console.debug('useWebRTC: Cannot get stream settings for publishing');
-       return;
+      if (isDevMode()) console.debug('broadcastWebRTC: Cannot get stream settings for publishing');
+      return;
     }
 
     const publishParams = {
@@ -152,27 +163,27 @@ export default function useWebRTC({
       type: 'webrtc' // Specify stream type
     };
 
-    if (isDevMode()) console.debug(`useWebRTC: Socket connected, joining room: ${room}`);
+    if (isDevMode()) console.debug(`broadcastWebRTC: Socket connected, joining room: ${room}`);
     currentSocket.emit('roomJoin', { room: room });
 
     // Use room name (channel) as the streamId for publishing in this context
     const streamId = room;
-    if (isDevMode()) console.debug(`useWebRTC: Publishing stream ${streamId} to room ${room} with params:`, publishParams);
+    if (isDevMode()) console.debug(`broadcastWebRTC: Publishing stream ${streamId} to room ${room} with params:`, publishParams);
     currentSocket.emit('roomPublish', {
-        room: room,
-        stream: streamId, // Use room name as streamId
-        parameters: publishParams
+      room: room,
+      stream: streamId, // Use room name as streamId
+      parameters: publishParams
     });
 
     setIsConnecting(false);
     setIsLive(true);
 
-  }, [config?.channel, username]); // Keep username dependency for the initial check
+  }, [username]); // Remove config?.channel from dependency array, always use latest inside
 
 
   // Handle generic socket messages (WebRTC signaling)
   const handleSocketMessage = useCallback((message) => {
-    if (isDevMode()) console.debug('useWebRTC: Socket message received:', message);
+    if (isDevMode()) console.debug('broadcastWebRTC: Socket message received:', message);
 
     if (!username) return; // Need username to filter self
 
@@ -194,11 +205,11 @@ export default function useWebRTC({
     } else if (message.type === "peer") {
       // Add new peer connection when new viewer joins
       if (message.peerID && message.peerID !== username) { // Use direct username
-        if (isDevMode()) console.debug('useWebRTC: New peer joined:', message.peerID);
+        if (isDevMode()) console.debug('broadcastWebRTC: New peer joined:', message.peerID);
 
         // Clean up existing connection first
         if (peerConnections.current[message.peerID]) {
-          if (isDevMode()) console.debug('useWebRTC: Cleaning up existing connection for peer before creating new one:', message.peerID);
+          if (isDevMode()) console.debug('broadcastWebRTC: Cleaning up existing connection for peer before creating new one:', message.peerID);
           peerConnections.current[message.peerID].close();
           delete peerConnections.current[message.peerID];
         }
@@ -209,35 +220,41 @@ export default function useWebRTC({
     } else if (message.type === "answer") {
       // Process answer from a peer
       if (peerConnections.current[message.from]) {
-        if (isDevMode()) console.debug('useWebRTC: Received answer from peer:', message.from);
+        if (isDevMode()) console.debug('broadcastWebRTC: Received answer from peer:', message.from);
         peerConnections.current[message.from]
           .setRemoteDescription(new RTCSessionDescription(message.content)) // Use RTCSessionDescription constructor
-          .catch(err => console.error('useWebRTC: Error setting remote description:', err));
+          .catch(err => console.error('broadcastWebRTC: Error setting remote description:', err));
       }
     } else if (message.type === "candidate") {
       // Process ICE candidate from a peer
       if (peerConnections.current[message.from] && message.candidate) {
+
+        if (isDevMode()) {
+          console.debug('broadcastWebRTC: Adding ICE candidate', message.from, message.candidate);
+        }
+
         peerConnections.current[message.from].addIceCandidate(new RTCIceCandidate(message.candidate))
-          .catch(err => console.error('useWebRTC: Error adding ICE candidate:', err));
+          .catch(err => console.error('broadcastWebRTC: Error adding ICE candidate:', err));
+
       }
     }
   }, [username]);
 
   // Handle room-specific updates from the server
   const handleRoomUpdate = useCallback((message) => {
-    if (isDevMode()) console.debug('useWebRTC: Room update received:', message);
+    if (isDevMode()) console.debug('broadcastWebRTC: Room update received:', message);
 
     const room = config?.channel; // Get current room name
 
     // Ensure the update is for the current room
     if (!room || message.room !== room) {
-        if (isDevMode()) console.debug('useWebRTC: Ignoring roomUpdate for different room:', message.room, 'expected:', room);
+        if (isDevMode()) console.debug('broadcastWebRTC: Ignoring roomUpdate for different room:', message.room, 'expected:', room);
         return;
     }
 
     // Handle errors sent via roomUpdate
     if (message.error) {
-        console.error(`useWebRTC: Room error for ${message.room}:`, message.error);
+        console.error(`broadcastWebRTC: Room error for ${message.room}:`, message.error);
         setError(`Room Error: ${message.error}`);
         setIsLive(false);
         setIsConnecting(false);
@@ -251,7 +268,7 @@ export default function useWebRTC({
     const currentSocket = socketRef.current;
     if (!currentSocket) return;
 
-    if (isDevMode()) console.debug('useWebRTC: Cleaning up socket listeners');
+    if (isDevMode()) console.debug('broadcastWebRTC: Cleaning up socket listeners');
 
     // Only remove our specific handlers, not all listeners
     currentSocket.off('message', handleSocketMessage);
@@ -268,18 +285,18 @@ export default function useWebRTC({
     if (!username) return;
 
     if (peerConnections.current[peerID]) {
-        if (isDevMode()) console.debug('useWebRTC addPeerConnection: Peer connection already exists for:', peerID);
+        if (isDevMode()) console.debug('broadcastWebRTC addPeerConnection: Peer connection already exists for:', peerID);
         return; // Already exists
     }
 
     if (!localStream.current) {
-      if (isDevMode()) console.debug('useWebRTC addPeerConnection: Cannot create peer connection, local stream not available');
+      if (isDevMode()) console.debug('broadcastWebRTC addPeerConnection: Cannot create peer connection, local stream not available');
       return;
     }
 
     //skip if peer is self
     if (peerID === username) { // Use direct username
-      if (isDevMode()) console.debug('useWebRTC addPeerConnection: Skipping self peer:', peerID);
+      if (isDevMode()) console.debug('broadcastWebRTC addPeerConnection: Skipping self peer:', peerID);
       return;
     }
 
@@ -288,15 +305,16 @@ export default function useWebRTC({
 
     // Skip if socket is not available
     if (!currentSocket) {
-      if (isDevMode()) console.debug('useWebRTC addPeerConnection: Socket instance during call:', currentSocket, 'from ref:', socketRef.current);
-      console.error('useWebRTC: Cannot create peer connection, socket not available');
+      if (isDevMode()) console.debug('broadcastWebRTC addPeerConnection: Socket instance during call:', currentSocket, 'from ref:', socketRef.current);
+      console.error('broadcastWebRTC: Cannot create peer connection, socket not available');
       return;
     }
 
-    if (isDevMode()) console.debug('useWebRTC: Adding peer connection for:', peerID);
+    if (isDevMode()) console.debug('broadcastWebRTC: Add RTCPeerConnection', peerID, peerConfigRef.current);
 
     // Create new peer connection using current peerConfig state
-    const pc = new RTCPeerConnection(peerConfig);
+    // Always use the latest peerConfig from the ref (fixes stale ICE config issue)
+    const pc = new RTCPeerConnection(peerConfigRef.current);
     peerConnections.current[peerID] = pc;
 
     // Track senders to apply bitrate limits
@@ -328,9 +346,9 @@ export default function useWebRTC({
             encoding.maxBitrate = streamSettingsRef.current.videoBitrate * 1000;
           });
           await senders.video.setParameters(params);
-          if (isDevMode()) console.debug('useWebRTC: Video bitrate limited to:', streamSettingsRef.current.videoBitrate, 'kbps');
+          if (isDevMode()) console.debug('broadcastWebRTC: Video bitrate limited to:', streamSettingsRef.current.videoBitrate, 'kbps');
         } catch (err) {
-          console.error('useWebRTC: Failed to set video bitrate:', err);
+          console.error('broadcastWebRTC: Failed to set video bitrate:', err);
         }
       };
       setVideoParams();
@@ -346,9 +364,9 @@ export default function useWebRTC({
             encoding.maxBitrate = streamSettingsRef.current.audioBitrate * 1000;
           });
           await senders.audio.setParameters(params);
-          if (isDevMode()) console.debug('useWebRTC: Audio bitrate limited to:', streamSettingsRef.current.audioBitrate, 'kbps');
+          if (isDevMode()) console.debug('broadcastWebRTC: Audio bitrate limited to:', streamSettingsRef.current.audioBitrate, 'kbps');
         } catch (err) {
-          console.error('useWebRTC: Failed to set audio bitrate:', err);
+          console.error('broadcastWebRTC: Failed to set audio bitrate:', err);
         }
       };
       setAudioParams();
@@ -357,11 +375,10 @@ export default function useWebRTC({
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        if (isDevMode()) console.debug('useWebRTC: Sending ICE candidate to peer:', peerID);
         // Use the current socket ref here
         const currentSocket = socketRef.current;
         if (!currentSocket) {
-          console.error('useWebRTC: Cannot send ICE candidate, socket not available');
+          console.error('broadcastWebRTC: Cannot send ICE candidate, socket not available');
           return;
         }
         let message = {
@@ -371,19 +388,31 @@ export default function useWebRTC({
           candidate: event.candidate,
           channel: roomName // Send the room name
         };
-        if (isDevMode()) console.debug('useWebRTC: Sending ICE candidate with messagePeer', message);
+        if (isDevMode()) console.debug('broadcastWebRTC onicecandidate sending with messagePeer', event.candidate.type, message);
         currentSocket.emit("messagePeer", message);
       }
     };
 
     // Handle connection state changes
     pc.onconnectionstatechange = () => {
-      if (isDevMode()) console.debug('useWebRTC: Connection state change for peer:', peerID, pc.connectionState);
+      if (isDevMode()) console.debug('broadcastWebRTC: Connection state change for peer:', peerID, pc.connectionState);
+
+      /*
+          if (isDevMode()) {
+          //troubleshoot webrtc on state change
+          pc.getStats().then(stats => {
+            stats.forEach(report => {
+                console.debug("broadcastWebRTC peerConnection", peerID, report);      
+            });
+          });
+        }
+      */
+
       // Use updateConnectedPeersCount which reads peerConnections ref
       updateConnectedPeersCount();
 
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-        if (isDevMode()) console.debug('useWebRTC: Peer disconnected or failed:', peerID);
+        if (isDevMode()) console.debug('broadcastWebRTC: Peer disconnected or failed:', peerID);
         // Clean up the specific peer connection
         if (peerConnections.current[peerID]) {
             peerConnections.current[peerID].close();
@@ -395,7 +424,7 @@ export default function useWebRTC({
 
     // Handle negotiation needed - create and send offer
     pc.onnegotiationneeded = () => {
-      if (isDevMode()) console.debug('useWebRTC: Negotiation needed for peer:', peerID);
+      if (isDevMode()) console.debug('broadcastWebRTC: Negotiation needed for peer:', peerID);
 
       pc.createOffer()
         .then(offer => {
@@ -407,7 +436,7 @@ export default function useWebRTC({
 
           // Check if socket is available before sending
           if (!currentSocket) {
-            console.error('useWebRTC: Cannot send offer, socket not available');
+            console.error('broadcastWebRTC: Cannot send offer, socket not available');
             return;
           }
 
@@ -417,20 +446,20 @@ export default function useWebRTC({
             target: peerID,
             type: "offer",
             content: pc.localDescription,
-            peerConfig: peerConfig, // Send current peerConfig state
+            peerConfig: peerConfigRef.current, // Send current peerConfig from ref
             channel: roomName // Send the room name
           };
-          if (isDevMode()) console.debug('useWebRTC: Sending offer with messagePeer', message);
+          if (isDevMode()) console.debug('broadcastWebRTC: Sending offer with messagePeer', message);
           currentSocket.emit("messagePeer", message);
         })
-        .catch(err => console.error('useWebRTC: Error creating offer:', err));
+        .catch(err => console.error('broadcastWebRTC: Error creating offer:', err));
     };
-  }, [peerConfig, updateConnectedPeersCount, username]); // Use username in dependency array
+  }, [updateConnectedPeersCount, username]); // Remove peerConfig from dependency array
 
   // Force device refresh function
   const refreshDevices = useCallback(async () => {
     try {
-      if (isDevMode()) console.debug('useWebRTC: Forcing device refresh...');
+      if (isDevMode()) console.debug('broadcastWebRTC: Forcing device refresh...');
 
       // Some browsers need a fresh getUserMedia call to detect device changes
       const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -443,7 +472,7 @@ export default function useWebRTC({
       const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
       if (isDevMode()) {
-        console.debug('useWebRTC: Refreshed video devices:', videoDevices.length);
+        console.debug('broadcastWebRTC: Refreshed video devices:', videoDevices.length);
         videoDevices.forEach((device, idx) => {
           console.debug(`Device ${idx}: ${device.label || 'Unnamed device'} (${device.deviceId.substring(0,8)}...)`);
         });
@@ -453,13 +482,13 @@ export default function useWebRTC({
 
       // If we still only have one device, but the user is forcing rotation
       if (videoDevices.length <= 1) {
-        if (isDevMode()) console.debug('useWebRTC: Still only one device found, enabling force mode');
+        if (isDevMode()) console.debug('broadcastWebRTC: Still only one device found, enabling force mode');
         setForceAvailable(true);
       }
 
       return videoDevices.length > 1;
     } catch (err) {
-      console.error('useWebRTC: Error refreshing device list:', err);
+      console.error('broadcastWebRTC: Error refreshing device list:', err);
       return false;
     }
   }, []);
@@ -475,7 +504,7 @@ export default function useWebRTC({
       setAudioMuted(!audioTrack.enabled);
 
       if (isDevMode()) {
-        console.debug('useWebRTC: Audio track ' + (audioTrack.enabled ? 'enabled' : 'disabled'));
+        console.debug('broadcastWebRTC: Audio track ' + (audioTrack.enabled ? 'enabled' : 'disabled'));
       }
     }
   }, []);
@@ -484,7 +513,7 @@ export default function useWebRTC({
   const rotateCamera = useCallback(async () => {
     // Allow rotation if multiple devices or force mode
     if (deviceList.length <= 1 && !forceAvailable) {
-      if (isDevMode()) console.debug('useWebRTC: Cannot rotate camera, only one device available');
+      if (isDevMode()) console.debug('broadcastWebRTC: Cannot rotate camera, only one device available');
 
       // Try refreshing device list one time
       const foundMultiple = await refreshDevices();
@@ -495,7 +524,7 @@ export default function useWebRTC({
       // If we're in force mode or have multiple devices, proceed with rotation
       // In force mode, just reuse the same deviceId but restart the video to try another camera
       if (deviceList.length <= 1 && forceAvailable) {
-        if (isDevMode()) console.debug('useWebRTC: Forcing camera rotation (same ID, different constraints)');
+        if (isDevMode()) console.debug('broadcastWebRTC: Forcing camera rotation (same ID, different constraints)');
         // Toggle between front/back by changing facingMode
         const currentFacingMode = localStream.current?.getVideoTracks()[0]?.getSettings()?.facingMode;
         const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
@@ -519,7 +548,7 @@ export default function useWebRTC({
       const nextDevice = deviceList[nextIndex];
       if (isDevMode()) {
         console.debug(
-          'useWebRTC: Rotating camera from',
+          'broadcastWebRTC: Rotating camera from',
           deviceList[currentIndex]?.label || 'unknown',
           'to',
           nextDevice?.label || 'unknown'
@@ -528,7 +557,7 @@ export default function useWebRTC({
 
       setSelectedDeviceId(nextDevice.deviceId);
     } catch (err) {
-      console.error('useWebRTC: Error rotating camera', err);
+      console.error('broadcastWebRTC: Error rotating camera', err);
     }
   }, [deviceList, forceAvailable, selectedDeviceId, refreshDevices]);
 
@@ -538,13 +567,13 @@ export default function useWebRTC({
   // Start camera preview
   const startPreview = useCallback(async () => {
     if (isStartingPreview.current) {
-      if (isDevMode()) console.debug('useWebRTC: startPreview already running, skipping duplicate call');
+      if (isDevMode()) console.debug('broadcastWebRTC: startPreview already running, skipping duplicate call');
       return;
     }
     isStartingPreview.current = true;
     setError(null);
     try {
-      if (isDevMode()) console.debug('useWebRTC: startPreview called. selectedDeviceId:', selectedDeviceId, 'streamSettings:', streamSettingsRef.current);
+      if (isDevMode()) console.debug('broadcastWebRTC: startPreview called. selectedDeviceId:', selectedDeviceId, 'streamSettings:', streamSettingsRef.current);
       // Set up video constraints using streamSettings
       const videoConstraints = {
         deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
@@ -556,7 +585,7 @@ export default function useWebRTC({
         video: videoConstraints,
         audio: true,
       };
-      if (isDevMode()) console.debug('useWebRTC: Using constraints:', constraints);
+      if (isDevMode()) console.debug('broadcastWebRTC: Using constraints:', constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStream.current = stream;
       if (videoRef.current) {
@@ -570,7 +599,7 @@ export default function useWebRTC({
         const prevIds = prev.map(d => d.deviceId).join(',');
         const newIds = videoDevices.map(d => d.deviceId).join(',');
         if (prevIds === newIds) return prev;
-        if (isDevMode()) console.debug('useWebRTC: Updating deviceList. New devices:', videoDevices.length);
+        if (isDevMode()) console.debug('broadcastWebRTC: Updating deviceList. New devices:', videoDevices.length);
         return videoDevices;
       });
       // Only update selectedDeviceId if not set or not in list
@@ -597,18 +626,18 @@ export default function useWebRTC({
         if (isLive && Object.keys(peerConnections.current).length > 0) {
           // If we're already live, just replace the media tracks in existing connections
           // instead of re-publishing to the channel
-          if (isDevMode()) console.debug('useWebRTC: Already live, replacing media tracks instead of republishing');
+          if (isDevMode()) console.debug('broadcastWebRTC: Already live, replacing media tracks instead of republishing');
           replaceTracks(stream);
         }
         // Not already live, need to publish
         else if (socketRef.current.connected) { // Use ref
           // Call handleConnect to publish for the first time
-          if (isDevMode()) console.debug('useWebRTC: Stream ready with socket connected, joining room and publishing');
+          if (isDevMode()) console.debug('broadcastWebRTC: Stream ready with socket connected, joining room and publishing');
           handleConnect(); // handleConnect now uses config values
         } else {
           // Wait for socket connection
           setIsConnecting(true);
-          if (isDevMode()) console.debug('useWebRTC: Stream ready but socket not connected, waiting for connect event');
+          if (isDevMode()) console.debug('broadcastWebRTC: Stream ready but socket not connected, waiting for connect event');
         }
       }
     } catch (err) {
@@ -629,7 +658,7 @@ export default function useWebRTC({
         return;
     }
 
-    if (isDevMode()) console.debug('useWebRTC: Attaching socket listeners');
+    if (isDevMode()) console.debug('broadcastWebRTC: Attaching socket listeners');
 
     // Use the handlers directly - they capture necessary dependencies
     sock.on('connect', handleConnect);
@@ -640,7 +669,7 @@ export default function useWebRTC({
 
     // If already connected when hook mounts/socket changes
     if (sock.connected && localStream.current) {
-      if (isDevMode()) console.debug('useWebRTC: Socket already connected, invoking connect handler');
+      if (isDevMode()) console.debug('broadcastWebRTC: Socket already connected, invoking connect handler');
       setIsConnecting(false);
       handleConnect(); // Call handleConnect directly
     } else if (!sock.connected) {
@@ -656,7 +685,7 @@ export default function useWebRTC({
           sock.off('roomUpdate', handleRoomUpdate);
           sock.off('disconnect', handleDisconnect);
           sock.off('publishError', handlePublishError);
-          if (isDevMode()) console.debug('useWebRTC: Detached socket listeners');
+          if (isDevMode()) console.debug('broadcastWebRTC: Detached socket listeners');
       }
     };
   // Dependencies now include the handlers themselves
@@ -670,20 +699,20 @@ export default function useWebRTC({
     const cleanupStreamId = cleanupRoom;
 
     return () => {
-      if (isDevMode()) console.debug('useWebRTC: Unmounting - cleaning up...');
+      if (isDevMode()) console.debug('broadcastWebRTC: Unmounting - cleaning up...');
 
       const currentSocket = socketRef.current; // Use ref for socket
 
       // Emit roomUnpublish and roomLeave if socket is still connected
       if (currentSocket && currentSocket.connected && cleanupRoom && cleanupStreamId) {
-        if (isDevMode()) console.debug(`useWebRTC: Emitting roomUnpublish for stream ${cleanupStreamId} in room ${cleanupRoom}`);
+        if (isDevMode()) console.debug(`broadcastWebRTC: Emitting roomUnpublish for stream ${cleanupStreamId} in room ${cleanupRoom}`);
         // Use room name as streamId for unpublish
         currentSocket.emit('roomUnpublish', { room: cleanupRoom, stream: cleanupStreamId });
 
-        if (isDevMode()) console.debug(`useWebRTC: Emitting roomLeave for room ${cleanupRoom}`);
+        if (isDevMode()) console.debug(`broadcastWebRTC: Emitting roomLeave for room ${cleanupRoom}`);
         currentSocket.emit('roomLeave', { room: cleanupRoom });
       } else {
-         if (isDevMode()) console.debug('useWebRTC: Skipping room unpublish/leave emit (socket disconnected or missing info)');
+         if (isDevMode()) console.debug('broadcastWebRTC: Skipping room unpublish/leave emit (socket disconnected or missing info)');
       }
 
       // Cleanup peer connections
@@ -693,7 +722,7 @@ export default function useWebRTC({
       if (localStream.current) {
         localStream.current.getTracks().forEach(track => track.stop());
         localStream.current = null;
-        if (isDevMode()) console.debug('useWebRTC: Local stream stopped');
+        if (isDevMode()) console.debug('broadcastWebRTC: Local stream stopped');
       }
     };
   }, [config?.channel, cleanupPeerConnections]);

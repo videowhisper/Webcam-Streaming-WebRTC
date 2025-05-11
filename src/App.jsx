@@ -1,4 +1,5 @@
 /*
+Webcam Streaming App: https://github.com/videowhisper/Webcam-Streaming-WebRTC
 Technology stack includes: Zustand, React, Tailwind CSS, Vite, Lucide Icons, VideoWhisper Server, Socket.IO .
 */
 
@@ -13,6 +14,8 @@ import Chat from "./views/Chat"; // Import the new Chat view
 import { isDevMode } from "./config/devMode";
 import useAppStore from "./store/appStore";
 import Watermark from "./components/Watermark"; // Import the Watermark component
+import BuildInfo from "./components/BuildInfo"; // Import the BuildInfo component
+import { getFormattedBuildInfo, getVersionString } from "./config/buildInfo"; // Import build info
 
 export default function App() {
   // Get states and actions from the Zustand store
@@ -38,7 +41,12 @@ export default function App() {
     }
     
     const init = async () => {
-      if (isDevMode()) console.debug("App init - loading configuration");
+      if (isDevMode()) {
+        // Show build info using our new utility
+        const buildInfo = getFormattedBuildInfo();
+        const version = getVersionString();
+        console.debug(`Webcam Streaming App init (${version}, ${buildInfo})`);
+      }
       try {
         // Use the store-integrated config loader
         await import('./config/configLoaderStore').then(module => {
@@ -188,6 +196,7 @@ export default function App() {
     <>
       {renderView()}
       <Watermark />
+      <BuildInfo />
     </>
   );
 }

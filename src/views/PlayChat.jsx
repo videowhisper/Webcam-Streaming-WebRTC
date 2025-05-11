@@ -2,7 +2,7 @@
 // PlayChat view component (replicates Play view, but using MVVM and custom hook)
 import React, { useRef } from 'react';
 import useAppStore from '../store/appStore'; // Import useAppStore to get socket
-import usePlayWebRTC from '../hooks/playWebRTC'; // Updated import path
+import playWebRTC from '../hooks/playWebRTC'; // Updated import path
 import ChatInterface from '../components/ChatInterface'; // Import ChatInterface
 import { Wifi, WifiOff, Loader, Volume2, VolumeX, ArrowRight, Play as PlayIcon } from 'lucide-react';
 import { isDevMode } from '../config/devMode';
@@ -42,7 +42,7 @@ export default function PlayChat() {
     setShowTapToPlay,
     setAudioMuted,
     toggleAudioMute
-  } = usePlayWebRTC(channel);
+  } = playWebRTC(channel);
 
   // UI copied from PlayWebRTC, but using state from the hook
   return (
@@ -111,30 +111,8 @@ export default function PlayChat() {
       {/* Centered Tap to Play button */}
       {showTapToPlay && (
         <div 
-          className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 cursor-pointer"
-          onClick={() => {
-            if (videoRef.current) {
-              videoRef.current.muted = false;
-              setAudioMuted(false);
-              videoRef.current.play()
-                .then(() => {
-                  setShowTapToPlay(false);
-                  setError(null);
-                })
-                .catch(err => {
-                  videoRef.current.muted = true;
-                  setAudioMuted(true);
-                  setShowTapToUnmute(true);
-                  videoRef.current.play()
-                    .then(() => {
-                      setShowTapToPlay(false);
-                    })
-                    .catch(mutedErr => {
-                      setError("Could not play video: " + mutedErr.message);
-                    });
-                });
-            }
-          }}
+          className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 cursor-pointer z-30" // Added z-index
+          onClick={() => setShowTapToPlay(false)} // Explicitly call setShowTapToPlay
         >
           <div className="bg-black bg-opacity-70 text-white p-6 rounded-full flex flex-col items-center animate-pulse">
             <PlayIcon size={48} strokeWidth={2} />

@@ -23,6 +23,9 @@ const useAppStore = create((set, get) => ({
   configLoaded: false,
   configError: null,
 
+  // WebRTC configuration
+  peerConfig: { 'iceServers': [] },
+
   // Socket instance
   socket: null,
 
@@ -127,7 +130,28 @@ const useAppStore = create((set, get) => ({
   },
   
   // Utility for convenience - so components don't need to import from config/devMode
-  isDevMode: () => get().isDevMode
+  isDevMode: () => get().isDevMode,
+
+  // Set WebRTC peer configuration
+  setPeerConfig: (peerConfig) => {
+    let configToSet = peerConfig;
+    // In dev mode, force relay policy for TURN testing
+    if (isDevMode && typeof isDevMode === 'function' ? isDevMode() : isDevMode) {
+      if (peerConfig && typeof peerConfig === 'object') {
+        configToSet = {
+          ...peerConfig,
+          iceTransportPolicy: 'relay',
+        };
+        if (Array.isArray(peerConfig.iceServers) && peerConfig.iceServers.length > 0) {
+          // No change needed, just ensure relay policy is set
+        }
+      }
+      console.log('appStore (devmode): Forcing iceTransportPolicy relay for peerConfig:', configToSet);
+    } else {
+      if (isDevMode) console.log('appStore Setting peerConfig:', peerConfig);
+    }
+    set({ peerConfig: configToSet });
+  }
 }));
 
 export default useAppStore;

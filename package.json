@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:timestamp": "NODE_ENV=production vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy": "vite build"
+    "deploy": "NODE_ENV=production vite build"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.0",

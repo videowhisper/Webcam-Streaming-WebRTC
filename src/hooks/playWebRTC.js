@@ -1,12 +1,15 @@
-// src/hooks/usePlayWebRTC.js
+// src/hooks/playWebRTC.js
 // Custom hook for WebRTC playback logic (extracted from PlayWebRTC)
 import { useEffect, useRef, useState, useCallback } from 'react';
 import useAppStore from '../store/appStore';
 import { isDevMode } from '../config/devMode';
 
 // Accept streamId (broadcaster's username) as prop
-export default function usePlayWebRTC(streamId) {
+export default function playWebRTC(streamId) {
   const { config, socket } = useAppStore();
+  const peerConfig = useAppStore(state => state.peerConfig);
+  const setPeerConfig = useAppStore(state => state.setPeerConfig);
+  
   const videoRef = useRef(null);
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -16,7 +19,6 @@ export default function usePlayWebRTC(streamId) {
   const [showTapToPlay, setShowTapToPlay] = useState(false);
   const [autoplayAttempted, setAutoplayAttempted] = useState(false);
   const unmuteTipTimeoutRef = useRef(null);
-  const [peerConfig, setPeerConfig] = useState({ 'iceServers': [] });
   const peerConnection = useRef(null);
   const broadcasterIdRef = useRef(null); // Store the actual broadcaster socket ID for signaling
   const targetStreamIdRef = useRef(streamId); // Store the target stream ID (broadcaster username)
@@ -76,7 +78,7 @@ export default function usePlayWebRTC(streamId) {
 
     if (!currentSocket || !room) {
         if (isDevMode()) console.debug("PlayWebRTC: Cannot join room - missing socket or room name");
-        setError("Cannot join: Missing connection details.");
+        setError(`Socket connection issue: ${!currentSocket ? 'No socket' : 'Missing room name'}`);
         setIsConnecting(false);
         return;
     }
@@ -87,16 +89,20 @@ export default function usePlayWebRTC(streamId) {
     reconnectAttempts.current = 0;
   }, [config?.channel, config?.username]); // Add config dependencies
 
-  const handleDisconnect = useCallback(() => {
-    if (isDevMode()) console.debug("PlayWebRTC socket disconnected");
+  const handleDisconnect = useCallback((reason) => {
+    if (isDevMode()) console.debug("PlayWebRTC socket disconnected:", reason);
     cleanupWebRTC();
-  }, [cleanupWebRTC]);
+    // Set error state with the original reason if we were previously connecting or live
+    if (isConnecting || isLive) {
+      setError(`Socket disconnected: ${reason || 'Unknown reason'}`);
+    }
+  }, [cleanupWebRTC, isConnecting, isLive]);
 
   // Keep subscribeError for channel-level issues from webrtcModule
   const handleSubscribeError = useCallback((data) => {
     const errMsg = data?.message || "Subscription failed.";
     if (isDevMode()) console.debug("PlayWebRTC Subscribe error:", errMsg);
-    setError(`Stream Error: ${errMsg}`);
+    setError(`${errMsg}`); // Use original error message as received from server
     cleanupWebRTC();
   }, [cleanupWebRTC]);
 
@@ -115,7 +121,7 @@ export default function usePlayWebRTC(streamId) {
     // Handle errors sent via roomUpdate
     if (message.error) {
         console.error(`PlayWebRTC: Room error for ${message.room}:`, message.error);
-        setError(`Room Error: ${message.error}`);
+        setError(`${message.error}`); // Use original error message as received from server
         cleanupWebRTC(); // Clean up on room error
         return; // Stop processing if there's an error
     }
@@ -157,7 +163,7 @@ export default function usePlayWebRTC(streamId) {
       }, 1000 + Math.random() * 2000);
     } else {
       if (isDevMode()) console.debug("PlayWebRTC max reconnection attempts reached");
-      setError("Failed to connect after multiple attempts. Please try again.");
+      setError(`Connection failed after ${maxReconnectAttempts} attempts`);
       cleanupWebRTC();
     }
   }, [cleanupWebRTC, handleConnect]); // Add handleConnect dependency
@@ -184,9 +190,10 @@ export default function usePlayWebRTC(streamId) {
       }
     };
 
+
     peerConnection.current.onicecandidate = (event) => {
       if (event.candidate && broadcasterIdRef.current) {
-        if (isDevMode()) console.debug("PlayWebRTC Sending ICE candidate to broadcaster:", broadcasterIdRef.current);
+        if (isDevMode()) console.debug("PlayWebRTC onicecandidate Sending ICE candidate to broadcaster:", broadcasterIdRef.current, event.candidate.type, event.candidate);
         socketRef.current.emit("messagePeer", {
           type: "candidate",
           from: config?.username || "Viewer", // Use direct config value
@@ -194,6 +201,18 @@ export default function usePlayWebRTC(streamId) {
           channel: targetChannelRef.current,
           candidate: event.candidate
         });
+
+      if (isDevMode()) {
+          peerConnection.current.getStats().then(stats => {
+            let candidateCount = 0;
+            stats.forEach(report => {
+          if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+            candidateCount++;
+          }
+            });
+            console.debug("PlayWebRTC: Current ICE candidate count:", candidateCount);
+          });
+        }
       }
     };
 
@@ -234,7 +253,18 @@ export default function usePlayWebRTC(streamId) {
     };
     peerConnection.current.oniceconnectionstatechange = () => {
       if (!peerConnection.current) return;
-      if (isDevMode()) console.debug("PlayWebRTC ICE connection state:", peerConnection.current.iceConnectionState);
+      if (isDevMode()) console.debug("PlayWebRTC iceConnectionState:", peerConnection.current.iceConnectionState);
+
+      /*
+          if (isDevMode()) {
+          //troubleshoot webrtc playback on state change
+          peerConnection.current.getStats().then(stats => {
+            stats.forEach(report => {
+                console.debug("PlayWebRTC peerConnection:", report);      
+            });
+          });
+        }
+  */
       if (peerConnection.current.iceConnectionState === 'failed') {
         handleReconnect(); // Call handleReconnect
       }
@@ -250,6 +280,8 @@ export default function usePlayWebRTC(streamId) {
           if (isDevMode()) console.debug("PlayWebRTC: Cleaning up existing peer connection before handling new offer for message:", message);
           peerConnection.current.close();
       }
+
+      if (isDevMode()) console.debug("PlayWebRTC Add RTCPeerConnection (broadcaster)", message.from, message.channel, message.peerConfig);
 
       peerConnection.current = new RTCPeerConnection(message.peerConfig);
       setupPeerConnectionHandlers(); // Setup handlers for the new connection
@@ -273,7 +305,7 @@ export default function usePlayWebRTC(streamId) {
       startStatsCollection(); // Call startStatsCollection here
     } catch (err) {
       console.error("Error handling offer:", err);
-      setError(`Connection error: ${err.message}`);
+      setError(`${err.message}`); // Use the raw error message
       handleReconnect(); // Attempt reconnect on offer handling error
     }
 
@@ -291,6 +323,19 @@ export default function usePlayWebRTC(streamId) {
     } else if (message.type === "candidate" && peerConnection.current && message.candidate) {
       peerConnection.current.addIceCandidate(new RTCIceCandidate(message.candidate))
         .catch(error => console.error("Error adding received ICE candidate", error));
+
+        if (isDevMode()) {
+          peerConnection.current.getStats().then(stats => {
+            let candidateCount = 0;
+            stats.forEach(report => {
+          if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+            candidateCount++;
+          }
+            });
+            console.debug("PlayWebRTC: Current ICE candidate count:", candidateCount);
+          });
+        }
+
     }
   }, [handleOfferMessage]); // Add handleOfferMessage dependency
 
@@ -507,5 +552,8 @@ export default function usePlayWebRTC(streamId) {
     stats,
     setError,
     toggleAudioMute,
+    setShowTapToPlay,       // Add these missing state setters
+    setShowTapToUnmute,     // Add these missing state setters
+    setAudioMuted,          // Add this for completeness
   };
 }
