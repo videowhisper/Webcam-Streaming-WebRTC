@@ -10,6 +10,8 @@ import Play from "./components/Play";       // Corrected path
 import Debugger from "./views/Debugger"; // Updated import path
 import BroadcastChat from "./views/BroadcastChat"; // Import the new BroadcastChat view
 import PlayChat from "./views/PlayChat"; // Import the new PlayChat view
+import CallChat from "./views/CallChat";
+import RandomChat from "./views/RandomChat";
 import Chat from "./views/Chat"; // Import the new Chat view
 import { isDevMode } from "./config/devMode";
 import useAppStore from "./store/appStore";
@@ -24,7 +26,7 @@ export default function App() {
     currentView, 
     configLoaded,
     getErrorMessage,
-    setView // Correctly destructure setView instead of setCurrentView
+    _setView // Correctly destructure _setView instead of setCurrentView
   } = useAppStore();
   
   // Socket reference
@@ -156,6 +158,10 @@ export default function App() {
         return <BroadcastChat />;
       case "PlayChat":
         return <PlayChat />;
+      case "CallChat":
+        return <CallChat />;
+      case "RandomChat":
+        return <RandomChat />;
       case "Chat":
         // Pass socket prop to Chat view
         return <Chat socket={socket} />;

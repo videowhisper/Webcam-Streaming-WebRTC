@@ -316,7 +316,7 @@ export default function BroadcastWebRTC() {
     };
 
     // Handle connection state changes
-    pc.onconnectionstatechange = (event) => {
+    pc.onconnectionstatechange = () => {
       if (isDevMode()) console.debug('BroadcastWebRTC Connection state change for peer:', peerID, pc.connectionState);
       
       // Handle connection established
@@ -505,7 +505,7 @@ export default function BroadcastWebRTC() {
         if (isDevMode()) console.debug('BroadcastWebRTC Forcing camera rotation (same ID, different constraints)');
         // Toggle between front/back by changing facingMode
         const currentFacingMode = localStream.current?.getVideoTracks()[0]?.getSettings()?.facingMode;
-        const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        const _newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
         
         // Just force a new device selection with the desired facing mode
         const tempDeviceId = selectedDeviceId;

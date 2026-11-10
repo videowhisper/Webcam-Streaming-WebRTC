@@ -1,0 +1,5 @@
+DirectoryIndex index.php index.html
+Options -Indexes
+<FilesMatch "^(config|login)\.json$">
+Require all denied
+</FilesMatch>

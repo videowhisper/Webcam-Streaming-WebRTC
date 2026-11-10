@@ -25,6 +25,13 @@ const useAppStore = create((set, get) => ({
 
   // WebRTC configuration
   peerConfig: { 'iceServers': [] },
+  
+  // Watermark configuration (can be overridden by config)
+  watermark: {
+    image: 'watermark.png',
+    url: 'https://consult.videowhisper.com',
+    enabled: true
+  },
 
   // Socket instance
   socket: null,
@@ -80,11 +87,22 @@ const useAppStore = create((set, get) => ({
     if (configLoaded && currentConfig && JSON.stringify(currentConfig) !== JSON.stringify(config)) {
       console.warn('appStore: setConfig called with a different config after configLoaded=true. This should not happen!');
     }
-    if (isDevMode) console.log('appStore Setting config:', config);
+    if (isDevMode()) console.log('appStore Setting config:', config);
+    
+    // Extract watermark settings from config if provided
+    const watermarkUpdate = {};
+    if (config?.watermarkImage !== undefined) watermarkUpdate.image = config.watermarkImage;
+    if (config?.watermarkUrl !== undefined) watermarkUpdate.url = config.watermarkUrl;
+    if (config?.demoMode !== undefined) watermarkUpdate.enabled = !config.demoMode; // Disable in demo mode
+    
     set({ 
       config,
       configLoaded: true,
       configError: null,
+      // Update watermark if config provides it
+      ...(Object.keys(watermarkUpdate).length > 0 && {
+        watermark: { ...get().watermark, ...watermarkUpdate }
+      }),
       // If config sets development mode, update that too
       ...(config?.development !== undefined && { isDevMode: !!config.development })
     });
@@ -99,7 +117,7 @@ const useAppStore = create((set, get) => ({
   // View management
   setView: (view) => 
     {
-      if (isDevMode) console.log('appStore Switching view to:', view);
+      if (isDevMode()) console.log('appStore Switching view to:', view);
       set({ currentView: view })
     },
   
@@ -130,27 +148,19 @@ const useAppStore = create((set, get) => ({
   },
   
   // Utility for convenience - so components don't need to import from config/devMode
-  isDevMode: () => get().isDevMode,
+
 
   // Set WebRTC peer configuration
   setPeerConfig: (peerConfig) => {
-    let configToSet = peerConfig;
-    // In dev mode, force relay policy for TURN testing
+    // Respect server-provided iceTransportPolicy
+    // Only override if explicitly needed for local testing
     if (isDevMode && typeof isDevMode === 'function' ? isDevMode() : isDevMode) {
-      if (peerConfig && typeof peerConfig === 'object') {
-        configToSet = {
-          ...peerConfig,
-          iceTransportPolicy: 'relay',
-        };
-        if (Array.isArray(peerConfig.iceServers) && peerConfig.iceServers.length > 0) {
-          // No change needed, just ensure relay policy is set
-        }
-      }
-      console.log('appStore (devmode): Forcing iceTransportPolicy relay for peerConfig:', configToSet);
-    } else {
-      if (isDevMode) console.log('appStore Setting peerConfig:', peerConfig);
+      console.log('appStore (devmode): Received peer configuration');
     }
-    set({ peerConfig: configToSet });
+    
+    // Use the peerConfig as provided by the server
+    // Server now controls iceTransportPolicy via ICE_TRANSPORT_POLICY env variable
+    set({ peerConfig: peerConfig });
   }
 }));
 

@@ -1,6 +1,18 @@
 # Webcam Streaming WebRTC
+## PHP demo maintenance — 2026-11-10
 
-React JS application for real-time WebRTC webcam video streaming: Broadcast camera live to multiple viewers. Public source code & build included.
+The live demo now keeps its account token in private server configuration and issues browser-session-bound, five-minute PINs. `credentialsURL` renews the PIN for each connection. Manual account/PIN and legacy token integrations remain supported.
+
+To use the PHP host, copy `demo/php/` beside the built `dist` files on PHP 8.2+ over HTTPS. Set `VWS_DEMO_CONFIG` to an owner-readable JSON file outside the web root containing `socket`, `account` and `token`. Set the dedicated streaming account callback to this installation's `auth.php`. The PHP index selects `config.php`, generates a separate tab identity, and validates the browser session when renewing. `.htaccess` selects the PHP index and denies retired public `config.json`/`login.json` files. Configure equivalent rules on other web servers. No account registration, token rotation or remote executable download is performed by the app.
+
+The build now publishes only approved public templates/assets; private configuration and login files never enter `dist` or the service-worker precache. Deploy only the built assets and reviewed PHP host files, retain a runtime/configuration backup, and verify broadcast/playback, calls, RandomChat, chat, PIN renewal and cleanup before accepting the update. Use synthetic devices first; physical devices and separate networks need manual checks.
+
+Pre-publishing checks: `npm ci`, `npm run lint` (existing hook-dependency warnings need review), `npm run test:e2e`, `npm run build`, and `npm audit --omit=dev`. Browser fixtures run on loopback with synthetic configuration; set `VWC_CHROMIUM_PATH` if using an existing Chromium executable. Runtime audit is clear on 2026-11-10; four development-only findings remain in the service-worker build chain after compatible fixes.
+
+For small group meetings, try the separate [Video Conference demo](https://demo.videowhisper.com/video-conference/). [Current webcam/microphone/screen recorder](https://demo.videowhisper.com/webcam-microphone-screen-recorder/).
+
+
+React JS application for real-time WebRTC webcam video streaming: broadcast live, join 2-way private calls, or use random video chat with configurable matching filters. Public source code & build included.
 
 [Live Demo](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/)
 
@@ -28,7 +40,9 @@ React JS application for real-time WebRTC webcam video streaming: Broadcast came
 - **Real-time WebRTC video streaming** 100% web based, with peer-to-peer connections
 - **Broadcast Mode**: Publish live video from your camera to multiple viewers
 - **Play Mode**: Watch live streams from broadcaster
-- **Video Chat**: Real-time text chat within broadcast and play views.
+- **CallChat Mode**: Private 2-way video chat with picture-in-picture local preview and mobile-friendly camera rotation
+- **RandomChat Mode**: Random 2-way matching with Next button and configurable match filters
+- **Video Chat**: Real-time text chat within broadcast, call, and play views.
 - **Camera Selection**: Switch/rotate between available camera devices (mobile friendly)
 - **Audio Controls**: Mute/unmute microphone in broadcast mode or audio in playback mode
 - **Stream Status Indicator**: Monitor streaming state and viewer count
@@ -112,10 +126,12 @@ To install and run the application on your own server:
 
 ### Quick Demo Links
 
-When `enableGET: true` is set in the config, you can use URL parameters to quickly access broadcast/playback for specific channels:
+When `enableGET: true` is set in the config, you can use URL parameters to quickly access broadcast, call, and playback views for specific channels:
 
 - Broadcasting: `/?view=BroadcastChat&channel=MyChannel`
 - Viewing: `/?view=PlayChat&channel=MyChannel`
+- Direct call: `/?view=CallChat&channel=MyPrivateRoom`
+- Random chat: `/?view=RandomChat`
 
 
 ## Technical Implementation
@@ -136,6 +152,8 @@ The application connects to the [VideoWhisper WebRTC Server](https://github.com/
 The application supports multiple views that can be set in the configuration file or through URL `view` parameter:
 - `BroadcastChat`: Camera controls, room chat, share buttons (default)
 - `PlayChat`: Player with room chat
+- `CallChat`: Private 2-way video chat with remote video main stage and local PiP preview
+- `RandomChat`: Queue-based 2-way matching with filter form, Next button, and invite link sharing
 - `Broadcast`: Simple broadcaster view with camera selection and broadcasting controls, no room & chat
 - `Play`: Simple player view, no room & chat
 - `Chat`: Text chat-only room view
@@ -179,6 +197,34 @@ The player component receives and displays the live stream:
 ### Key Hooks
 - **broadcastWebRTC**: Custom hook for managing the broadcaster's WebRTC connections, including media capture and signaling.
 - **playWebRTC**: Custom hook for managing the player's WebRTC connections, including session management and media reception.
+- **callWebRTC**: Custom hook for bidirectional room calls, handling local publish plus remote subscribe in the same room.
+
+### Matching Filters Configuration
+
+Random chat filters are provided through the `randomChat.filters` configuration section. Each filter can define a `mirror` key to match against a different field from the other user. When `mirror` is omitted, both users must share the same value. Blank values are treated as `Any` wildcards. If a filter points to a `mirror` label that is not explicitly defined elsewhere, the app auto-creates the mirrored companion dropdown with the same options.
+
+```json
+{
+   "view": "RandomChat",
+   "randomChat": {
+      "includeAnyOption": true,
+      "collapseAfterMs": 10000,
+      "roomPrefix": "Call",
+      "filters": [
+         {
+            "label": "I am",
+            "options": "Male|Female",
+            "mirror": "Looking for"
+         },
+         {
+            "label": "Language",
+            "key": "language",
+            "options": "English|Spanish|French|German"
+         }
+      ]
+   }
+}
+```
 
 ### WebRTC Signaling Flow
 
@@ -220,6 +266,7 @@ Copy `unconfigured.json` to `config.json` file in the public folder with setting
     "username": "{generate}",     // Will auto-generate a username
     "view": "BroadcastChat",          // Initial view mode, see Views section below
     "enableGET": true,            // Allow URL parameters to override config
+   "configLock": false,          // true or ["channel","view"] to keep selected config keys authoritative
     "showURL": true,              // Show URL sharing button
     
     // Server configuration and authentication
@@ -264,6 +311,11 @@ window.videowhisperConfig = {
 You can use an integration script that provides streaming server details only to authenticated site users.
 Further restrictions can be implemented on server side to limit access to streaming.
 
+When `enableGET` is enabled but an integration must keep fetched config values authoritative, set `configLock`.
+
+- `configLock: true` locks every key already provided by the fetched config or `window.videowhisperConfig`.
+- `configLock: ["channel", "view"]` locks only those keys while leaving other GET overrides enabled.
+
 ## Building and Development
 
 ### Prerequisites
@@ -299,6 +351,22 @@ Further restrictions can be implemented on server side to limit access to stream
    ```
 
 5. Access the application at `http://localhost:5173`
+
+### Local View Testing
+
+- Allow camera and microphone access in each browser profile you use for testing. `CallChat` and `RandomChat` will not join or publish media until `getUserMedia()` succeeds.
+- `BroadcastChat`: open `http://localhost:5173/?view=BroadcastChat&channel=LocalBroadcast` and verify local preview, publish, chat, and share actions.
+- `PlayChat`: open `http://localhost:5173/?view=PlayChat&channel=LocalBroadcast` in a second tab or browser while the broadcaster is live.
+- `CallChat`: open the same URL such as `http://localhost:5173/?view=CallChat&channel=RoomTest` in two different browsers or browser profiles.
+- `RandomChat`: open `http://localhost:5173/?view=RandomChat` in two different browsers or browser profiles and wait for `matchFound` to place both users into the same private room.
+- `Chat`: open `http://localhost:5173/?view=Chat&channel=RoomTest` to verify room text chat without media.
+- `Debugger`: with `"development": true` in `public/config.json`, use the debugger button in the watermark area to switch views at runtime.
+
+### Local Auth Notes
+
+- `Broadcast` and `Play` flows can work with account token auth.
+- `CallChat`, `RandomChat`, and other room-based flows require `videowhisperServer.authentication: "pin"` plus an account that supports `user/pin` authentication through a configured `loginURL` on the signaling server.
+- If room views fail with `connect_error` or `Authentication error`, verify the server account exists, has a valid `loginURL`, and that the `user` and `pin` values you are sending are accepted by that endpoint.
 
 ### Building for Production
 
@@ -344,7 +412,7 @@ To prepare for publishing:
 ### Room Participant to Server
 | Event | Parameters | Description |
 |-------|-----------|-------------|
-|`roomJoin` | `{room}` |  Joins a specific room/channel |
+|`roomJoin` | `{room, options}` |  Joins a specific room/channel and can declare room meta such as `maxParticipants` |
 |`roomLeave` | `{room}` |  Leaves a specific room/channel |
 |`message` | `{from, target, type, content, ...}` | Sends a message to a specific target (peer or room) |
 
@@ -376,6 +444,8 @@ Rooms require account/user/pin authentication to join. Joining room also handles
 | `publishError` | Error notification for broadcasting issues, for Broadcaster |
 | `subscribeError` | Error notification for playback issues, for Viewer  |
 | `roomUpdate` | Room updates that may include participants, messages, messageNew|
+| `matchStatus` | Random queue status update with waiting count |
+| `matchFound` | Random queue match result with the private room to join |
 
 ### WebRTC Message Types between Peers (messagePeer)
 
@@ -393,6 +463,18 @@ Room updates are sent to participants in the room and may include the following 
 | `messages` | List of messages |
 | `messageNew` | New message in room |
 | `participants` | List of participants in the room |
+| `meta` | Room metadata including participant counts and participant limit |
+
+### Random Match Flow
+
+`RandomChat` uses socket queue events on top of the room module:
+
+| Event | Parameters | Description |
+|-------|-----------|-------------|
+| `randomQueueJoin` | `{queue, filters, definitions, roomPrefix, roomOptions}` | Queue the current user for random matching |
+| `randomQueueLeave` | `{queue}` | Leave the random matching queue |
+
+When a compatible peer is found, both clients receive `matchFound` with a private 2-user room and then join it through the regular `roomJoin` / `roomPublish` flow.
 
 ### 2 Authentication Methods
 

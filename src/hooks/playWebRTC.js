@@ -1,11 +1,11 @@
-// src/hooks/playWebRTC.js
+// src/hooks/usePlayWebRTC.js
 // Custom hook for WebRTC playback logic (extracted from PlayWebRTC)
 import { useEffect, useRef, useState, useCallback } from 'react';
 import useAppStore from '../store/appStore';
 import { isDevMode } from '../config/devMode';
 
 // Accept streamId (broadcaster's username) as prop
-export default function playWebRTC(streamId) {
+export default function usePlayWebRTC(streamId) {
   const { config, socket } = useAppStore();
   const peerConfig = useAppStore(state => state.peerConfig);
   const setPeerConfig = useAppStore(state => state.setPeerConfig);
@@ -17,13 +17,14 @@ export default function playWebRTC(streamId) {
   const [audioMuted, setAudioMuted] = useState(false);
   const [showTapToUnmute, setShowTapToUnmute] = useState(false);
   const [showTapToPlay, setShowTapToPlay] = useState(false);
-  const [autoplayAttempted, setAutoplayAttempted] = useState(false);
+  const autoplayAttemptedRef = useRef(false); // Use ref for immediate updates
   const unmuteTipTimeoutRef = useRef(null);
   const peerConnection = useRef(null);
   const broadcasterIdRef = useRef(null); // Store the actual broadcaster socket ID for signaling
   const targetStreamIdRef = useRef(streamId); // Store the target stream ID (broadcaster username)
   const targetChannelRef = useRef(null); // Store the WebRTC channel associated with the target stream
   const reconnectAttempts = useRef(0);
+  const waitingForOffer = useRef(false); // Track if we're waiting for offer after streamNew
   const maxReconnectAttempts = 3;
   const [stats, setStats] = useState({
     video: { bitrate: 0, fps: 0, resolution: '' },
@@ -42,6 +43,13 @@ export default function playWebRTC(streamId) {
   // Ref for socket only
   const socketRef = useRef(socket);
   // REMOVE: usernameRef, roomNameRef
+  
+  // Refs for handlers to keep socket listener effect stable
+  const handleConnectRef = useRef(null);
+  const handleDisconnectRef = useRef(null);
+  const handleSubscribeErrorRef = useRef(null);
+  const handleRoomUpdateRef = useRef(null);
+  const handleMessageRef = useRef(null);
 
   // Update refs when props/state change
   useEffect(() => {
@@ -53,6 +61,13 @@ export default function playWebRTC(streamId) {
     targetChannelRef.current = null;
   }, [streamId]);
 
+  // Define stopStatsCollection early so it can be used by cleanupWebRTC
+  const stopStatsCollection = useCallback(() => {
+    if (statsInterval.current) {
+      clearInterval(statsInterval.current);
+      statsInterval.current = null;
+    }
+  }, []);
 
   // --- Cleanup Logic --- (No changes needed here, already uses refs correctly)
   const cleanupWebRTC = useCallback(() => {
@@ -67,6 +82,8 @@ export default function playWebRTC(streamId) {
       videoRef.current.srcObject = null;
     }
     broadcasterIdRef.current = null;
+    // Reset autoplayAttempted so video will auto-play on reconnection
+    autoplayAttemptedRef.current = false;
   }, []);
 
   // --- Handlers ---
@@ -126,7 +143,62 @@ export default function playWebRTC(streamId) {
         return; // Stop processing if there's an error
     }
 
-    // Process room state to find the target stream's channel
+    // Handle streamRemove event - broadcaster stopped streaming
+    if (message.streamRemove) {
+        const removedStreamId = message.streamRemove;
+        if (isDevMode()) console.debug(`PlayWebRTC: Stream removed: ${removedStreamId}`);
+        
+        // Check if this is the stream we're watching
+        if (removedStreamId === targetStreamIdRef.current) {
+            if (isDevMode()) console.debug(`PlayWebRTC: Target stream ${targetStreamIdRef.current} removed, cleaning up connection`);
+            setIsLive(false);
+            setIsConnecting(false);
+            stopStatsCollection();
+            // Clean up peer connection
+            if (peerConnection.current) {
+                peerConnection.current.close();
+                peerConnection.current = null;
+            }
+            broadcasterIdRef.current = null;
+            targetChannelRef.current = null;
+            waitingForOffer.current = false; // Reset waiting state
+        }
+        return;
+    }
+
+    // Handle streamNew event - new stream published (or broadcaster reconnected)
+    if (message.streamNew) {
+        const newStream = message.streamNew;
+        if (isDevMode()) console.debug(`PlayWebRTC: New stream published:`, newStream);
+        
+        // Check if this is the stream we're interested in
+        if (newStream.streamId === targetStreamIdRef.current) {
+            if (isDevMode()) console.debug(`PlayWebRTC: Target stream ${targetStreamIdRef.current} is now available. Preparing for reconnection.`);
+            
+            // Clean up any existing peer connection to allow fresh connection
+            if (peerConnection.current) {
+                if (isDevMode()) console.debug(`PlayWebRTC: Closing existing peer connection for clean reconnection`);
+                peerConnection.current.close();
+                peerConnection.current = null;
+            }
+            
+            // Update stream information
+            targetChannelRef.current = newStream.channel;
+            broadcasterIdRef.current = newStream.socketId;
+            
+            // Reset state to allow new connection
+            setIsLive(false);
+            setIsConnecting(true);
+            reconnectAttempts.current = 0; // Reset reconnect attempts
+            waitingForOffer.current = true; // Mark as waiting for offer
+            
+            // The offer will arrive via the 'message' event and handleOfferMessage will establish the connection
+            if (isDevMode()) console.debug(`PlayWebRTC: Ready to receive offer from broadcaster ${broadcasterIdRef.current}`);
+        }
+        return;
+    }
+
+    // Process room state to find the target stream's channel (for initial room join)
     const processRoomData = (data) => {
         if (!data || !data.streams) return;
         const targetStream = data.streams[targetStreamIdRef.current];
@@ -140,17 +212,88 @@ export default function playWebRTC(streamId) {
         }
     };
 
-    // process other room updates here, when needed
-    
-  }, [config?.channel, cleanupWebRTC]); // Add config.channel dependency
+    // Handle participantLeft event - might be the broadcaster
+    if (message.participantLeft) {
+        if (isDevMode()) console.debug(`PlayWebRTC: Participant left:`, message.participantLeft);
+        // Connection state will be handled by onconnectionstatechange if it's the broadcaster
+    }
 
+    // Handle participantJoin event
+    if (message.participantJoin) {
+        if (isDevMode()) console.debug(`PlayWebRTC: Participant joined:`, message.participantJoin);
+    }
+
+    // Initial room snapshot (sent on join) carries currently active streams - use it to
+    // recognize a broadcaster that was already live before this viewer joined.
+    processRoomData(message);
+
+  }, [config?.channel, cleanupWebRTC]); // Removed stopStatsCollection - it's stable and doesn't need to be in deps
+
+
+  // --- Autoplay logic --- (Must be defined before setupPeerConnectionHandlers)
+  const attemptAutoplay = useCallback(() => {
+    if (isDevMode()) console.debug("PlayWebRTC: Attempting autoplay (unmuted)...");
+    if (!videoRef.current) {
+      if (isDevMode()) console.debug("PlayWebRTC: No videoRef, cannot autoplay");
+      return;
+    }
+    videoRef.current.muted = false;
+    setAudioMuted(false);
+    videoRef.current.play()
+      .then(() => {
+        if (isDevMode()) console.debug("PlayWebRTC Unmuted autoplay succeeded");
+        setError(null);
+        setShowTapToUnmute(false);
+        setShowTapToPlay(false);
+        autoplayAttemptedRef.current = true;
+      })
+      .catch(err => {
+        if (isDevMode()) console.debug("PlayWebRTC Unmuted autoplay failed:", err);
+        videoRef.current.muted = true;
+        setAudioMuted(true);
+        setShowTapToUnmute(true);
+        videoRef.current.play()
+          .then(() => {
+            if (isDevMode()) console.debug("PlayWebRTC Muted autoplay succeeded");
+            setError(null);
+            setShowTapToPlay(false);
+            setShowTapToUnmute(true);
+            autoplayAttemptedRef.current = true;
+            if (unmuteTipTimeoutRef.current) clearTimeout(unmuteTipTimeoutRef.current);
+            unmuteTipTimeoutRef.current = setTimeout(() => setShowTapToUnmute(false), 5000);
+          })
+          .catch(mutedErr => {
+            if (isDevMode()) console.debug("PlayWebRTC Muted autoplay also failed:", mutedErr);
+            setShowTapToPlay(true);
+            setShowTapToUnmute(false);
+            autoplayAttemptedRef.current = true;
+          });
+      });
+  }, []);
 
   // --- Reconnect Logic --- (Depends on handleConnect, cleanupWebRTC)
   const handleReconnect = useCallback(() => {
+    // Don't reconnect if we're waiting for offer after broadcaster reload (streamNew)
+    if (waitingForOffer.current) {
+      if (isDevMode()) console.debug("PlayWebRTC: Skipping reconnect - waiting for broadcaster's new offer");
+      return;
+    }
+    
     if (reconnectAttempts.current < maxReconnectAttempts) {
       reconnectAttempts.current += 1;
       if (isDevMode()) console.debug(`PlayWebRTC reconnection attempt ${reconnectAttempts.current} of ${maxReconnectAttempts}`);
       cleanupWebRTC(); // Clean up before attempting reconnect
+      
+      // CRITICAL FIX: Leave the room first to clean up server-side state
+      // This ensures the broadcaster gets notified when we rejoin
+      const currentSocket = socketRef.current;
+      const room = config?.channel;
+      
+      if (currentSocket?.connected && room) {
+        if (isDevMode()) console.debug("PlayWebRTC: Leaving room before reconnect to clean up server state");
+        currentSocket.emit("roomLeave", { room: room });
+      }
+      
       setTimeout(() => {
         const currentSocket = socketRef.current;
         if (currentSocket?.connected) {
@@ -166,7 +309,7 @@ export default function playWebRTC(streamId) {
       setError(`Connection failed after ${maxReconnectAttempts} attempts`);
       cleanupWebRTC();
     }
-  }, [cleanupWebRTC, handleConnect]); // Add handleConnect dependency
+  }, [cleanupWebRTC, handleConnect, config?.channel]); // Add config?.channel dependency
 
   // --- Peer Connection Setup --- (Depends on handleReconnect)
   const setupPeerConnectionHandlers = useCallback(() => {
@@ -184,8 +327,12 @@ export default function playWebRTC(streamId) {
         }
         setIsLive(true); // Mark as live once tracks are received
         setIsConnecting(false); // Not connecting anymore
-        if (!autoplayAttempted) {
+        if (isDevMode()) console.debug("PlayWebRTC: Checking autoplay - autoplayAttempted:", autoplayAttemptedRef.current);
+        if (!autoplayAttemptedRef.current) {
+          if (isDevMode()) console.debug("PlayWebRTC: Calling attemptAutoplay");
           attemptAutoplay(); // Call attemptAutoplay here
+        } else {
+          if (isDevMode()) console.debug("PlayWebRTC: Skipping autoplay - already attempted");
         }
       }
     };
@@ -266,10 +413,12 @@ export default function playWebRTC(streamId) {
         }
   */
       if (peerConnection.current.iceConnectionState === 'failed') {
-        handleReconnect(); // Call handleReconnect
+        // Note: onconnectionstatechange also handles 'failed', so this may be redundant
+        // Keeping it for backwards compatibility
+        handleReconnect();
       }
     };
-  }, [autoplayAttempted, handleReconnect, config?.username]);
+  }, [attemptAutoplay, handleReconnect, config?.username]);
 
   // --- Offer Handling --- (Depends on setupPeerConnectionHandlers, handleReconnect)
   const handleOfferMessage = useCallback(async (message) => {
@@ -284,7 +433,12 @@ export default function playWebRTC(streamId) {
       if (isDevMode()) console.debug("PlayWebRTC Add RTCPeerConnection (broadcaster)", message.from, message.channel, message.peerConfig);
 
       peerConnection.current = new RTCPeerConnection(message.peerConfig);
+      
+      // Reset autoplayAttempted for new connection
+      autoplayAttemptedRef.current = false;
+      
       setupPeerConnectionHandlers(); // Setup handlers for the new connection
+      waitingForOffer.current = false; // Clear waiting state once offer is received
 
       await peerConnection.current.setRemoteDescription(new RTCSessionDescription(message.content));
       const answer = await peerConnection.current.createAnswer();
@@ -339,43 +493,6 @@ export default function playWebRTC(streamId) {
     }
   }, [handleOfferMessage]); // Add handleOfferMessage dependency
 
-
-  // --- Autoplay logic --- (No changes needed)
-  const attemptAutoplay = useCallback(() => {
-    if (!videoRef.current) return;
-    videoRef.current.muted = false;
-    setAudioMuted(false);
-    videoRef.current.play()
-      .then(() => {
-        if (isDevMode()) console.debug("PlayWebRTC Unmuted autoplay succeeded");
-        setError(null);
-        setShowTapToUnmute(false);
-        setShowTapToPlay(false);
-        setAutoplayAttempted(true);
-      })
-      .catch(err => {
-        if (isDevMode()) console.debug("PlayWebRTC Unmuted autoplay failed:", err);
-        videoRef.current.muted = true;
-        setAudioMuted(true);
-        setShowTapToUnmute(true);
-        videoRef.current.play()
-          .then(() => {
-            if (isDevMode()) console.debug("PlayWebRTC Muted autoplay succeeded");
-            setError(null);
-            setShowTapToPlay(false);
-            setShowTapToUnmute(true);
-            setAutoplayAttempted(true);
-            if (unmuteTipTimeoutRef.current) clearTimeout(unmuteTipTimeoutRef.current);
-            unmuteTipTimeoutRef.current = setTimeout(() => setShowTapToUnmute(false), 5000);
-          })
-          .catch(mutedErr => {
-            if (isDevMode()) console.debug("PlayWebRTC Muted autoplay also failed:", mutedErr);
-            setShowTapToPlay(true);
-            setShowTapToUnmute(false);
-            setAutoplayAttempted(true);
-          });
-      });
-  }, [autoplayAttempted]);
 
   // --- Stats collection logic ---
   const startStatsCollection = useCallback(() => {
@@ -455,13 +572,6 @@ export default function playWebRTC(streamId) {
     }, 2000);
   }, []);
 
-  const stopStatsCollection = useCallback(() => {
-    if (statsInterval.current) {
-      clearInterval(statsInterval.current);
-      statsInterval.current = null;
-    }
-  }, []);
-
   // --- Toggle Audio --- (No changes needed)
   const toggleAudioMute = useCallback(() => {
     if (videoRef.current) {
@@ -474,6 +584,27 @@ export default function playWebRTC(streamId) {
 
   // --- Effects ---
 
+  // Update handler refs when handlers change (keeps socket listeners stable)
+  useEffect(() => {
+    handleConnectRef.current = handleConnect;
+  }, [handleConnect]);
+
+  useEffect(() => {
+    handleDisconnectRef.current = handleDisconnect;
+  }, [handleDisconnect]);
+
+  useEffect(() => {
+    handleSubscribeErrorRef.current = handleSubscribeError;
+  }, [handleSubscribeError]);
+
+  useEffect(() => {
+    handleRoomUpdateRef.current = handleRoomUpdate;
+  }, [handleRoomUpdate]);
+
+  useEffect(() => {
+    handleMessageRef.current = handleMessage;
+  }, [handleMessage]);
+
   // Main effect for setting up socket listeners
   useEffect(() => {
     const currentSocket = socketRef.current;
@@ -485,16 +616,24 @@ export default function playWebRTC(streamId) {
     }
 
     if (isDevMode()) console.debug("PlayWebRTC: Attaching socket listeners");
-    // Use handlers directly
-    currentSocket.on("connect", handleConnect);
-    currentSocket.on("disconnect", handleDisconnect);
-    currentSocket.on("subscribeError", handleSubscribeError);
-    currentSocket.on("roomUpdate", handleRoomUpdate);
-    currentSocket.on("message", handleMessage); // Reverted back to "message"
+    
+    // Create stable wrapper functions that call through to the latest handlers via refs
+    const connectWrapper = () => handleConnectRef.current?.();
+    const disconnectWrapper = () => handleDisconnectRef.current?.();
+    const subscribeErrorWrapper = (data) => handleSubscribeErrorRef.current?.(data);
+    const roomUpdateWrapper = (data) => handleRoomUpdateRef.current?.(data);
+    const messageWrapper = (data) => handleMessageRef.current?.(data);
+    
+    // Attach stable wrappers
+    currentSocket.on("connect", connectWrapper);
+    currentSocket.on("disconnect", disconnectWrapper);
+    currentSocket.on("subscribeError", subscribeErrorWrapper);
+    currentSocket.on("roomUpdate", roomUpdateWrapper);
+    currentSocket.on("message", messageWrapper);
 
     if (currentSocket.connected) {
       if (isDevMode()) console.debug("PlayWebRTC: Socket already connected, invoking connect handler");
-      handleConnect(); // Call directly
+      connectWrapper();
     } else {
       if (isDevMode()) console.debug("PlayWebRTC: Socket not connected, waiting for connect event");
       setIsConnecting(true);
@@ -504,15 +643,15 @@ export default function playWebRTC(streamId) {
     return () => {
       if (currentSocket) {
         if (isDevMode()) console.debug("PlayWebRTC: Detaching socket listeners");
-        currentSocket.off("connect", handleConnect);
-        currentSocket.off("disconnect", handleDisconnect);
-        currentSocket.off("subscribeError", handleSubscribeError);
-        currentSocket.off("roomUpdate", handleRoomUpdate);
-        currentSocket.off("message", handleMessage); // Reverted back to "message"
+        currentSocket.off("connect", connectWrapper);
+        currentSocket.off("disconnect", disconnectWrapper);
+        currentSocket.off("subscribeError", subscribeErrorWrapper);
+        currentSocket.off("roomUpdate", roomUpdateWrapper);
+        currentSocket.off("message", messageWrapper);
       }
     };
-  // Add handlers to dependency array
-  }, [socket, config?.channel, streamId, handleConnect, handleDisconnect, handleSubscribeError, handleRoomUpdate, handleMessage, cleanupWebRTC]);
+  // Only depend on socket and streamId - handlers are accessed via stable refs
+  }, [socket, streamId, config?.channel]);
 
 
   // Effect for cleaning up on unmount
@@ -524,10 +663,14 @@ export default function playWebRTC(streamId) {
       if (isDevMode()) console.debug("PlayWebRTC: Unmounting - cleaning up...");
 
       const currentSocket = socketRef.current; // Use ref for socket
+      const nextView = useAppStore.getState().currentView;
+      const keepSocketForDebugger = nextView === 'Debugger';
 
-      if (currentSocket && currentSocket.connected && cleanupRoom) {
+      if (!keepSocketForDebugger && currentSocket && currentSocket.connected && cleanupRoom) {
         if (isDevMode()) console.debug(`PlayWebRTC: Emitting roomLeave for room ${cleanupRoom}`);
         currentSocket.emit('roomLeave', { room: cleanupRoom });
+      } else if (keepSocketForDebugger) {
+        if (isDevMode()) console.debug('PlayWebRTC: Keeping socket connected for Debugger view transition');
       } else {
          if (isDevMode()) console.debug('PlayWebRTC: Skipping room leave emit (socket disconnected or missing info)');
       }

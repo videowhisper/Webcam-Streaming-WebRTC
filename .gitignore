@@ -38,3 +38,15 @@ build
 .env.development.local
 .env.test.local
 .env.production.local
+
+node_modules.nosync
+
+# Private demo configuration and generated evidence
+.env*
+.vscode/
+config.json
+login.json
+playwright-report/
+test-results/
+*.log
+release/

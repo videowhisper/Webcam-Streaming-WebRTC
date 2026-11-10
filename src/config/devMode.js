@@ -15,7 +15,7 @@ export const setDevMode = (value) => {
     if (store && store.setDevMode) {
       store.setDevMode(devMode || configDevMode);
     }
-  } catch (e) {
+  } catch {
     // Silent fail if store isn't initialized yet
   }
 };
@@ -29,7 +29,7 @@ export const setConfigDevMode = (value) => {
     if (store && store.setDevMode) {
       store.setDevMode(devMode || configDevMode);
     }
-  } catch (e) {
+  } catch {
     // Silent fail if store isn't initialized yet
   }
 };
@@ -42,7 +42,7 @@ export const isDevMode = () => {
     if (store) {
       return store.isDevMode;
     }
-  } catch (e) {
+  } catch {
     // Fall back to local variables if store isn't ready
   }
   

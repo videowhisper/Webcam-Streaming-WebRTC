@@ -30,9 +30,13 @@ const Chat = ({ socket }) => {
     // Cleanup: leave room and remove listener
     return () => {
       socket.off('connect', handleConnect);
-      if (socket.connected) {
+      const nextView = useAppStore.getState().currentView;
+      const keepSocketForDebugger = nextView === 'Debugger';
+      if (socket.connected && !keepSocketForDebugger) {
         if (isDevMode()) console.debug(`[ChatView] roomLeave ${room}`);
         socket.emit('roomLeave', { room: room });
+      } else if (keepSocketForDebugger && isDevMode()) {
+        console.debug('[ChatView] keeping socket connected for Debugger view transition');
       }
     };
   }, [socket, room]); // Dependencies: socket and room

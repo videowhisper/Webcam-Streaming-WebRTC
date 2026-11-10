@@ -7,7 +7,6 @@ import useAppStore from '../store/appStore';
 
 // Single socket instance shared across the application
 let socket = null;
-let isInitialized = false;
 
 // Event handler arrays
 let errorHandlers = [];
@@ -52,16 +51,13 @@ export const initializeVideoWhisperConnection = (config) => {
     
     // Reset socket variable
     socket = null;
-    isInitialized = false;
   }
   
   // Create a new socket
   const createdSocket = createSocket(config);
   
   if (!createdSocket) {
-    const error = videowhisperServer ? 
-                  videowhisperServer.error || "Failed to create socket" : 
-                  "Missing VideoWhisper server configuration";
+    const error = config?.videowhisperServer?.error || "Missing VideoWhisper server configuration";
     
     if (isDevMode()) console.error("VideoWhisperServer:", error);
     
@@ -98,7 +94,6 @@ export const initializeVideoWhisperConnection = (config) => {
     console.error("VideoWhisperServer: Failed to update connection state in store", e);
   }
   
-  isInitialized = true;
   return createdSocket;
 };
 
@@ -130,7 +125,7 @@ export const createSocket = (config) => {
        authObj.user = videowhisperServer.user || config.username; // Use provided user or fallback to username
        
        if (isDevMode()) {
-         console.log("VideoWhisperServer: Using account/pin authentication", authObj);
+         console.log("VideoWhisperServer: Using account/pin authentication");
        }
 
      } else if (videowhisperServer.token) {
@@ -147,9 +142,38 @@ export const createSocket = (config) => {
        return null;
      }
     
+    const testSocketFactory = typeof window !== 'undefined'
+      ? window.__videowhisperSocketFactory
+      : null;
+
+    // Server integrations can renew a short-lived, user-bound PIN on every connection.
+    // The private account token remains on the integration host.
+    const authenticate = videowhisperServer.credentialsURL ? async (done) => {
+      try {
+        const endpoint = new URL(videowhisperServer.credentialsURL, window.location.href);
+        if (endpoint.origin !== window.location.origin) throw new Error('Invalid credential endpoint');
+        const response = await fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok || result.vwsAuth?.account !== authObj.account || !result.vwsAuth?.pin) throw new Error('Session authentication failed');
+        done({ account: authObj.account, user: authObj.user, pin: result.vwsAuth.pin });
+      } catch {
+        useAppStore.getState().setErrorMessage('Session authentication failed. Reload the page and try again.');
+        useAppStore.getState().setView('Error');
+        done({});
+      }
+    } : authObj;
+
     // Create socket with appropriate authentication
-    socket = new io(videowhisperServer.socket, {
-      auth: authObj,
+    socket = typeof testSocketFactory === 'function'
+      ? testSocketFactory(videowhisperServer.socket, {
+        auth: authenticate,
+        transports: ["websocket"],
+        secure: true,
+        autoConnect: false,
+        reconnection: false,
+      })
+      : new io(videowhisperServer.socket, {
+      auth: authenticate,
       transports: ["websocket"],
       secure: true,
       autoConnect: false,
@@ -170,7 +194,12 @@ function setupSocketEventHandlers(sock) {
   
   // Handle socket connection
   sock.on("connect", () => {
-    if (isDevMode()) console.debug("VideoWhisperServer: Socket connected");
+    if (isDevMode()) {
+      console.log("VideoWhisperServer: Socket connected", {
+        socketId: sock.id,
+        transport: sock.io.engine?.transport?.name || null,
+      });
+    }
     store.setSocketConnected(true);
     store.setSocketConnecting(false);
     
@@ -180,12 +209,20 @@ function setupSocketEventHandlers(sock) {
 
   // Handle socket disconnection
   sock.on("disconnect", (reason) => {
-    if (isDevMode()) console.debug("VideoWhisperServer disconnect:", reason);
+    if (isDevMode()) {
+      console.warn("VideoWhisperServer disconnect", {
+        reason,
+        socketId: sock.id,
+      });
+    }
     store.setSocketConnected(false);
     
-    // update error view and message with original reason
+    // update error message but don't redirect away from Debugger view
     store.setErrorMessage(`Socket disconnect: ${reason}`);
-    store.setView('Error'); // Explicitly set Error view
+    const currentView = useAppStore.getState().currentView;
+    if (currentView !== 'Debugger') {
+      store.setView('Error'); // Redirect to Error view unless debugging
+    }
     
     // Call any registered disconnection handlers
     disconnectionHandlers.forEach(handler => handler(reason));

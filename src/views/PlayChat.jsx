@@ -1,26 +1,20 @@
 // src/views/PlayChat.jsx
 // PlayChat view component (replicates Play view, but using MVVM and custom hook)
-import React, { useRef } from 'react';
+import React from 'react';
 import useAppStore from '../store/appStore'; // Import useAppStore to get socket
-import playWebRTC from '../hooks/playWebRTC'; // Updated import path
+import usePlayWebRTC from '../hooks/playWebRTC'; // Updated import path
 import ChatInterface from '../components/ChatInterface'; // Import ChatInterface
+import ExitButton from '../components/ExitButton';
 import { Wifi, WifiOff, Loader, Volume2, VolumeX, ArrowRight, Play as PlayIcon } from 'lucide-react';
-import { isDevMode } from '../config/devMode';
+
 
 export default function PlayChat() {
   // Development circuit breaker for render loops (optional, like BroadcastChat)
-  const renderCountRef = useRef(0);
-  const MAX_RENDERS = 20;
-  const { setView, setErrorMessage } = useAppStore();
 
-  if (false) if (isDevMode())
-  React.useEffect(() => {
-    renderCountRef.current += 1;
-    if (renderCountRef.current > MAX_RENDERS) {
-      setErrorMessage('Too many consecutive renders detected. This could be caused by a dependency cycle: ' + renderCountRef.current);
-      setView('Error');
-    }
-  });
+
+
+
+
 
   // Get config, channel, and socket from app store
   const { config, socket } = useAppStore(); // Get socket here
@@ -38,11 +32,11 @@ export default function PlayChat() {
     showTapToPlay,
     stats,
     setError,
-    setShowTapToUnmute,
+    setShowTapToUnmute: _setShowTapToUnmute,
     setShowTapToPlay,
-    setAudioMuted,
+    setAudioMuted: _setAudioMuted,
     toggleAudioMute
-  } = playWebRTC(channel);
+  } = usePlayWebRTC(channel);
 
   // UI copied from PlayWebRTC, but using state from the hook
   return (
@@ -122,9 +116,15 @@ export default function PlayChat() {
       )}
 
       {/* Render Chat Interface if socket and room are available */}
+      {/* Reserve right margin so the chat panel doesn't extend under the Exit button */}
       {socket && room && socket.connected && (
-        <ChatInterface socket={socket} room={room} /> // Render ChatInterface with default style
+        <ChatInterface socket={socket} room={room} style={{ right: '5rem', width: 'auto' }} />
       )}
+
+      {/* Exit Button - shown when an exit URL is configured */}
+      <div className="absolute bottom-5 right-5 z-50">
+        <ExitButton url={config?.exitUrl} />
+      </div>
     </div>
   );
 }

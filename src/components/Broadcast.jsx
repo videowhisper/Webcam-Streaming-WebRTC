@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, Tv, ArrowDown } from 'lucide-react';
 import BroadcastWebRTC from './BroadcastWebRTC';
 import useAppStore from '../store/appStore';
+import { buildShareUrl } from '../utils/shareUrl';
 
 export default function Broadcast() {
   const { config, socket } = useAppStore();
@@ -58,7 +59,7 @@ export default function Broadcast() {
   }, [socket]);
 
   const copyURLToClipboard = () => {
-    const url = `${window.location.origin}${window.location.pathname}?channel=${encodeURIComponent(config.channel)}&view=Play`;
+    const url = buildShareUrl(config, config?.room || config?.channel, 'Play');
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -70,7 +71,7 @@ export default function Broadcast() {
   };
 
   const openURLInNewTab = () => {
-    const url = `${window.location.origin}${window.location.pathname}?channel=${encodeURIComponent(config.channel)}&view=Play`;
+    const url = buildShareUrl(config, config?.room || config?.channel, 'Play');
     window.open(url, '_blank');
     
     // Mark as clicked and hide tooltip

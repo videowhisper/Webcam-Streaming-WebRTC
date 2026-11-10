@@ -9,7 +9,7 @@ const Debugger = () => {
     currentView, 
     errorMessage, 
     configError,
-    peerConfig,
+    _peerConfig,
     setView // Correctly destructure setView instead of setCurrentView
   } = useAppStore();
   
@@ -47,6 +47,8 @@ const Debugger = () => {
           <option value="Debugger">Debugger</option>
           <option value="BroadcastChat">Broadcast Chat</option>
           <option value="PlayChat">Play Chat</option>
+          <option value="CallChat">Call Chat</option>
+          <option value="RandomChat">Random Chat</option>
           <option value="Broadcast">Broadcast</option>
           <option value="Play">Play</option>
           <option value="Chat">Chat</option>

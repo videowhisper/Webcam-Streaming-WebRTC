@@ -14,6 +14,7 @@ const buildTime = now.toLocaleTimeString();
 export default defineConfig({
   // Add base path for subfolder deployment
   base: './', 
+  publicDir: false,
   define: {
     // Make build information available to the app
     __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),
@@ -37,6 +38,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'favicon.ico'],
+      workbox: { globIgnores: ['**/config.json', '**/login.json'], navigateFallbackDenylist: [/\/(?:config|auth)\.php/] },
       manifest: {
         name: 'Webcam Streaming WebRTC',
         short_name: 'Cam Stream',
@@ -59,20 +61,15 @@ export default defineConfig({
         ],
       },
     }),
-    // Custom plugin to prevent config.json from being copied to dist
+    // Publish only known public templates/assets. Local service configuration
+    // must never enter a distribution or its service-worker precache.
     {
-      name: 'exclude-config-json',
-      writeBundle: {
-        sequential: true,
-        order: 'post',
-        handler({ dir }) {
-          const configPath = path.join(dir, 'config.json');
-          if (fs.existsSync(configPath)) {
-            console.log('Removing config.json from build...');
-            fs.unlinkSync(configPath);
-          }
+      name: 'public-file-allowlist',
+      generateBundle() {
+        for (const fileName of ['unconfigured.json', 'vite.svg', 'watermark.png']) {
+          this.emitFile({ type: 'asset', fileName, source: fs.readFileSync(path.resolve('public', fileName)) });
         }
-      }
+      },
     }
   ],
 });

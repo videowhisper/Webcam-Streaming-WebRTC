@@ -6,7 +6,7 @@ import ChatInput from './ChatInput';
 import ChatToggle from './ChatToggle';
 import { isDevMode } from '../config/devMode';
 
-const ChatInterface = ({ socket, room, style }) => { // Add style prop
+const ChatInterface = ({ socket, room, style, showToggle = true }) => { // Add style prop
   const config = useAppStore(state => state.config); // Get config from appStore
   // Select the entire messages object, not a computed value
   const {
@@ -60,7 +60,7 @@ const ChatInterface = ({ socket, room, style }) => { // Add style prop
         if (data.error) {
           // If error property is present, set error state and switch view
           if (isDevMode()) console.debug(`[ChatInterface] Received roomUpdate for ${room} with error:`, data.error);
-          const { setView, setErrorMessage } = require('../store/appStore').default.getState();
+          const { setView, setErrorMessage } = useAppStore.getState();
           setErrorMessage(data.error);
           setView('Error');
           return;
@@ -116,7 +116,7 @@ const ChatInterface = ({ socket, room, style }) => { // Add style prop
   return (
     <>
       {/* Toggle remains independently positioned */}
-      <ChatToggle onClick={toggleVisibility} isVisible={isVisible} />
+      {showToggle && <ChatToggle onClick={toggleVisibility} isVisible={isVisible} />}
 
       {/* Main Chat Container */}
       {isVisible && (
