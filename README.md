@@ -16,7 +16,31 @@ React JS application for real-time WebRTC webcam video streaming: broadcast live
 
 [Live Demo](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/)
 
-![Webcam Streaming WebRTC Illustration](images/illustration.jpg)
+## Screenshots
+
+Captured from the current application with AI-generated fictional participant
+portraits supplied as synthetic camera feeds. The app renders its own controls
+and video layout.
+
+### Live webcam broadcasting
+
+![Webcam broadcasting with camera controls and text chat](images/webcam-broadcast-v2.png)
+
+[Try broadcasting](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/).
+
+### Private video calls
+
+![Full-screen private call with a self-preview, visible controls and text chat](images/webcam-call-v2.png)
+
+[Try a private call](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/?view=CallChat).
+Copy the first session's invite link into another browser to join the same room.
+
+### Random video chat
+
+![Random video chat with full-screen video, self-preview and matching controls](images/webcam-random-v2.png)
+
+[Try RandomChat](https://demo.videowhisper.com/Webcam-Streaming-WebRTC/?view=RandomChat).
+
 
 ## Index
 
