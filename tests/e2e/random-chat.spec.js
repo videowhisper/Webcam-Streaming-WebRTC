@@ -210,3 +210,13 @@ test('renews a session PIN and rejects a different account response', async ({ p
   expect(await renew()).toEqual({});
   await expect(page.getByText('Session authentication failed. Reload the page and try again.')).toBeVisible();
 });
+
+test('broadcaster sharing icons retain a white foreground in the light theme', async ({ page }) => {
+  await installRandomChatHarness(page);
+  await page.addInitScript(() => { window.videowhisperConfig.view = 'BroadcastChat'; });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/?view=BroadcastChat');
+  const icon = page.getByTitle('Copy Stream URL').locator('svg');
+  await expect(icon).toBeVisible();
+  await expect(icon).toHaveCSS('stroke', 'rgb(255, 255, 255)');
+});
