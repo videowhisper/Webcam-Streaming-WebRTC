@@ -464,7 +464,7 @@ export default function RandomChat() {
       )}
 
       {activeRoom && filtersOpen && filters.length > 0 && (
-        <div className="absolute inset-x-0 top-24 z-20 mx-auto w-[min(92vw,28rem)] rounded-3xl border border-white/10 bg-black/70 p-5 backdrop-blur">
+        <div className="absolute inset-x-0 top-24 z-50 mx-auto w-[min(92vw,28rem)] rounded-3xl border border-white/10 bg-black/70 p-5 backdrop-blur">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Match Filters</h2>

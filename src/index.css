@@ -3,6 +3,8 @@ https://tailwindcss.com/docs/installation/using-vite
 */
 @import "tailwindcss";
 
+/* Starter defaults must not override Tailwind utilities on media controls. */
+@layer base {
 #root {
   height: 100%; /* Or height: 100vh; */
   margin: 0;
@@ -79,4 +81,5 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
 }

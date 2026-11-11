@@ -165,6 +165,29 @@ test('active match can reopen filters and request the next match with updated fi
   ).toBe(true);
 });
 
+test('media control icons remain visible in light and dark system themes', async ({ page }) => {
+  await openRandomChat(page);
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    const button = page.getByTitle('Mute microphone');
+    await expect(button).toBeVisible();
+    await expect(button.locator('svg')).toBeVisible();
+    const colors = await button.evaluate(element => {
+      const style = getComputedStyle(element);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext('2d');
+      context.fillStyle = style.backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      return { background: [...context.getImageData(0, 0, 1, 1).data], stroke: getComputedStyle(element.querySelector('svg')).stroke };
+    });
+    // White icons require a translucent control surface, rather than the opaque
+    // white Vite starter button that used to override the app's utility class.
+    expect(colors.background[3]).toBeLessThan(100);
+    expect(colors.stroke).toBe('rgb(255, 255, 255)');
+  }
+});
+
 test('renews a session PIN and rejects a different account response', async ({ page }) => {
   await installRandomChatHarness(page);
   await page.addInitScript(() => {
