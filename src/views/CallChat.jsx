@@ -11,6 +11,7 @@ import {
   MicOff,
   MonitorUp,
   Phone,
+  PhoneOff,
   RefreshCcw,
   RotateCcw,
   SwitchCamera,
@@ -49,6 +50,7 @@ export function CallScreen({
   footerLabel = '',
 }) {
   const { socket, config } = useAppStore();
+  const txt = key => config?.text?.[key] || key;
   const [urlCopied, setUrlCopied] = useState(false);
   const [chatVisible, setChatVisible] = useState(true);
   const [selfPreviewVisible, setSelfPreviewVisible] = useState(true);
@@ -106,12 +108,14 @@ export function CallScreen({
     <div className="relative h-full min-h-[30rem] w-full overflow-hidden bg-neutral-950 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#1f2937,transparent_45%),radial-gradient(circle_at_bottom,#0f766e,transparent_35%)]" />
 
-      <video
+      {call.remoteHasVideo === false ? <audio ref={call.setRemoteVideoElement} autoPlay /> : <video
         ref={call.setRemoteVideoElement}
         autoPlay
         playsInline
         className="absolute inset-0 h-full w-full object-cover"
-      />
+      />}
+      {call.playbackBlocked && <button onClick={call.enableSound} className="absolute left-4 top-4 z-50 rounded-xl bg-amber-400 px-4 py-3 text-black">{txt('Enable sound')}</button>}
+      {call.mediaError && <div role="alert" className="absolute inset-x-4 top-20 z-40 rounded-xl bg-red-950 p-4">{call.mediaError}<button className="ml-4 underline" onClick={call.retryMedia}>{txt('Retry microphone/camera')}</button></div>}
 
       {showWaitingOverlay && !call.isRemoteLive && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/50 px-6 text-center">
@@ -129,8 +133,8 @@ export function CallScreen({
               {call.isRoomFull
                 ? call.roomError
                 : call.remoteParticipantName
-                  ? `Waiting for ${call.remoteParticipantName} video...`
-                  : 'Waiting for another participant to join this private room.'}
+                  ? (call.participantCount > 1 ? txt('The other participant is connected. Media may be off; use the conversation below.') : `Waiting for ${call.remoteParticipantName}...`)
+                  : txt('Waiting for another participant to join this private room.')}
             </p>
             {showWaitingInvite && (shareRoom || room) && (
               <div className="mt-4 flex justify-center">
@@ -165,7 +169,7 @@ export function CallScreen({
         </div>
       </div>
 
-      {selfPreviewVisible && (
+      {selfPreviewVisible && call.policy?.video !== false && (
         <div className="absolute right-4 top-20 z-20">
           <div
             className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40 shadow-2xl backdrop-blur"
@@ -212,13 +216,13 @@ export function CallScreen({
         className={`absolute bottom-4 left-4 right-4 z-30 flex flex-wrap items-end gap-3 ${showFooterStatus ? 'justify-center sm:justify-between' : 'justify-center'}`}
       >
         <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 backdrop-blur">
-          <button
+          {call.policy?.audio !== false && <button
             onClick={call.toggleMicMute}
             className="rounded-full border border-white/10 bg-white/10 p-3 transition hover:bg-white/20"
             title={call.isMicMuted ? 'Unmute microphone' : 'Mute microphone'}
           >
             {call.isMicMuted ? <MicOff size={18} className="text-red-400" /> : <Mic size={18} />}
-          </button>
+          </button>}
           <button
             onClick={call.toggleSpeakerMute}
             className="rounded-full border border-white/10 bg-white/10 p-3 transition hover:bg-white/20"
@@ -235,13 +239,13 @@ export function CallScreen({
               {urlCopied ? <Check size={18} className="text-emerald-400" /> : <Copy size={18} />}
             </button>
           )}
-          <button
+          {call.policy?.video !== false && <button
             onClick={() => setSelfPreviewVisible((currentValue) => !currentValue)}
             className="rounded-full border border-white/10 bg-white/10 p-3 transition hover:bg-white/20"
             title={selfPreviewVisible ? 'Hide own preview' : 'Show own preview'}
           >
             {selfPreviewVisible ? <EyeOff size={18} /> : <Eye size={18} />}
-          </button>
+          </button>}
           {showChatToggle && (
             <button
               onClick={() => setChatVisible((currentValue) => !currentValue)}
@@ -251,7 +255,9 @@ export function CallScreen({
               {chatVisible ? <MessageSquareOff size={18} /> : <MessageSquare size={18} />}
             </button>
           )}
+          {call.policy?.audio && call.microphones?.length > 1 && <select aria-label="Microphone" value={call.selectedMicrophone || ''} onChange={event => call.setSelectedMicrophone(event.target.value)} className="max-w-40 rounded bg-neutral-800 p-2 text-white"><option value="">{txt('Default microphone')}</option>{call.microphones.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || txt('Microphone')}</option>)}</select>}
           {extraAction}
+          {call.endCall && <button onClick={call.endCall} className="inline-flex items-center gap-2 rounded-full bg-red-700 px-4 py-3 text-white" title="End call"><PhoneOff size={18} />{txt('End call')}</button>}
         </div>
 
         {showFooterStatus && (
@@ -264,7 +270,7 @@ export function CallScreen({
 
       {overlay}
 
-      {socket?.connected && room && chatVisible && (
+      {socket?.connected && room && call.isJoined && chatVisible && (
         <ChatInterface
           socket={socket}
           room={room}
@@ -275,7 +281,7 @@ export function CallScreen({
             transform: 'translateX(-50%)',
             width: 'min(42rem, calc(100% - 2rem))',
             bottom: chatBottom,
-            height: '28%',
+            height: call.policy?.text ? '65%' : '28%',
           }}
         />
       )}
@@ -285,8 +291,11 @@ export function CallScreen({
 
 export default function CallChat() {
   const { config } = useAppStore();
+  const txt = key => config?.text?.[key] || key;
   const room = config?.channel;
-  const call = useCallWebRTC({ room, view: 'CallChat' });
+  const [mediaMode, setMediaMode] = useState(config?.media?.mode || 'video');
+  const call = useCallWebRTC({ room, view: 'CallChat', mediaMode, autoStart: false });
+  const allowedModes = config?.media?.allowedModes || ['video', 'audio', 'text'];
   const [retryAvailableAt, setRetryAvailableAt] = useState(0);
 
   useEffect(() => {
@@ -300,7 +309,7 @@ export default function CallChat() {
 
   const retryButton = (
     <button
-      onClick={canRetry ? () => call.joinRoom() : undefined}
+      onClick={canRetry ? () => call.reconnect() : undefined}
       className={`rounded-full border border-white/10 p-3 transition ${canRetry ? 'bg-amber-500 text-black hover:bg-amber-400' : 'bg-white/10 text-white/50'}`}
       title="Retry room access"
     >
@@ -319,10 +328,28 @@ export default function CallChat() {
     </div>
   ) : null;
 
+  if (!call.started) return (
+    <div className="flex h-full min-h-[28rem] items-center justify-center bg-neutral-950 p-5 text-white">
+      <div className="w-full max-w-md space-y-5 rounded-3xl border border-white/20 p-6">
+        <h1 className="text-2xl font-semibold">{call.ended ? txt('Call ended') : txt('Join a private call')}</h1>
+        <p>{config?.media?.description || txt('Choose how you participate. You can receive the other participant’s media and use text chat.')}</p>
+        <label className="block">{txt('Your participation')}
+          <select aria-label="Your participation" className="mt-2 w-full rounded bg-neutral-800 p-3" value={mediaMode} onChange={event => setMediaMode(event.target.value)}>
+            {allowedModes.includes('video') && <option value="video">{txt('Video and microphone + chat')}</option>}
+            {allowedModes.includes('audio') && <option value="audio">{txt('Microphone + chat')}</option>}
+            {allowedModes.includes('text') && <option value="text">{txt('Text chat only')}</option>}
+          </select>
+        </label>
+        <p className="text-sm text-white/70">{mediaMode === 'text' ? txt('No camera or microphone permission is needed.') : mediaMode === 'audio' ? txt('Only microphone permission will be requested.') : txt('Camera and microphone permission will be requested.')}</p>
+        <button onClick={call.startCall} className="w-full rounded-xl bg-teal-500 px-5 py-3 font-semibold text-black">{call.ended ? txt('Rejoin call') : txt('Join call')}</button>
+      </div>
+    </div>
+  );
+
   return (
     <CallScreen
-      title="Call Chat"
-      subtitle="Two-way private video chat with picture-in-picture self preview."
+      title={mediaMode === 'audio' ? txt('Voice call') : mediaMode === 'text' ? txt('Text conversation') : txt('Video call')}
+      subtitle="Private call with participant-specific media and text chat."
       room={room}
       shareRoom={room}
       call={call}
@@ -331,7 +358,9 @@ export default function CallChat() {
       showChatToggle={false}
       showInfoCard={false}
       showWaitingTitle={false}
-      showScreenShare
+      showInviteButton={config?.media?.allowInvite !== false}
+      showWaitingInvite={config?.media?.allowInvite !== false}
+      showScreenShare={call.policy.video}
       footerLabel={room ? `Room ${room}` : 'Open invite link to join'}
     />
   );

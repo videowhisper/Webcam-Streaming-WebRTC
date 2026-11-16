@@ -220,7 +220,7 @@ function setupSocketEventHandlers(sock) {
     // update error message but don't redirect away from Debugger view
     store.setErrorMessage(`Socket disconnect: ${reason}`);
     const currentView = useAppStore.getState().currentView;
-    if (currentView !== 'Debugger') {
+    if (currentView !== 'Debugger' && currentView !== 'CallChat') {
       store.setView('Error'); // Redirect to Error view unless debugging
     }
     
@@ -235,7 +235,7 @@ function setupSocketEventHandlers(sock) {
     
     // Use the original error message as received from server
     store.setErrorMessage(errorMessage);
-    store.setView('Error'); // Explicitly set Error view on connection errors
+    if (store.currentView !== 'CallChat') store.setView('Error'); // Calls retain their retry/end controls.
     
     // Call any registered error handlers
     errorHandlers.forEach(handler => handler(err));

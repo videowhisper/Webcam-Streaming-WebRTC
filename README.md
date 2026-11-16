@@ -1,4 +1,18 @@
 # Webcam Streaming WebRTC
+
+## Direct video, voice and text calls — 2026-11-16
+
+`CallChat` now offers a pre-join choice for each participant: video and microphone, microphone only, or text only. Both sides can receive the other participant's media and chat. Audio mode never requests a camera; text mode requests no devices and can still receive audio/video. Join explicitly grants media access. End stops local capture and peer connections; permission errors retain Retry/End controls, and blocked playback offers Enable sound. Recent room history is restored on join.
+
+Embed configuration example:
+
+```js
+media: { mode: 'audio', allowedModes: ['video', 'audio', 'text'], allowInvite: true }
+```
+
+The `media` object configures participation UI/capture. It is not server authorization, billing permission or a paid-access guarantee. Direct Free calls do not implement managed PPM. PPV WordPress hosts route paid sessions to the legacy HTML5 app until the separate managed engine is qualified. The existing server protocol remains unchanged.
+
+Verified with 18 desktop/mobile Chrome regression cases and all six two-party media combinations over local real Socket.IO/WebRTC, including decoded RTP, actual chat and end cleanup. Physical devices, Safari/iOS background behavior and WAN/TURN remain deployment checks.
 ## PHP demo maintenance — 2026-11-10
 
 The live demo now keeps its account token in private server configuration and issues browser-session-bound, five-minute PINs. `credentialsURL` renews the PIN for each connection. Manual account/PIN and legacy token integrations remain supported.

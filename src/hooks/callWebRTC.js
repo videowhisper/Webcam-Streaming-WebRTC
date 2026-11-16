@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useAppStore from '../store/appStore';
+import useChatStore from '../store/chatStore';
 import { isDevMode } from '../config/devMode';
+import { mediaPolicy, captureConstraints } from '../utils/mediaPolicy';
 
 function logCallWebRTC(view, message, payload = undefined) {
   if (!isDevMode()) {
@@ -15,11 +17,18 @@ function logCallWebRTC(view, message, payload = undefined) {
   console.log(`[useCallWebRTC:${view}] ${message}`, payload);
 }
 
-export default function useCallWebRTC({ room, view = 'CallChat' }) {
+export default function useCallWebRTC({ room, view = 'CallChat', mediaMode, autoStart = true }) {
   const config = useAppStore((state) => state.config);
   const setPeerConfig = useAppStore((state) => state.setPeerConfig);
   const socket = useAppStore((state) => state.socket);
 
+  const policy = useMemo(() => mediaPolicy(mediaMode || config?.media?.mode), [mediaMode, config?.media?.mode]);
+  const [started, setStarted] = useState(autoStart);
+  const [ended, setEnded] = useState(false);
+  const remoteStreamRef = useRef(null);
+  const recoveryTimers = useRef(new Map());
+  const startedRef = useRef(autoStart);
+  const captureGeneration = useRef(0);
   const socketRef = useRef(socket);
   const roomRef = useRef(room);
   const localVideoRef = useRef(null);
@@ -38,10 +47,15 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
   const isMicMutedRef = useRef(false);
 
   const username = config?.username;
-  const streamSettings = config?.stream || {};
+  const streamSettings = useMemo(() => config?.stream || {}, [config?.stream]);
 
   const [deviceList, setDeviceList] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+  const [microphones, setMicrophones] = useState([]);
+  const [selectedMicrophone, setSelectedMicrophone] = useState(null);
+  const [remoteHasVideo, setRemoteHasVideo] = useState(false);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const [mediaError, setMediaError] = useState(null);
   const [mediaReady, setMediaReady] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
@@ -119,9 +133,8 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
     remoteVideoRef.current = element;
     if (element) {
       element.muted = isSpeakerMuted;
-      if (element.srcObject) {
-        element.play().catch(() => {});
-      }
+      element.srcObject = remoteStreamRef.current;
+      if (element.srcObject) element.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
     }
   }, [isSpeakerMuted]);
 
@@ -144,6 +157,8 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       state: connection.connectionState || null,
     });
 
+    clearTimeout(recoveryTimers.current.get(connection));
+    recoveryTimers.current.delete(connection);
     connection.close();
     delete outgoingPeerConnections.current[peerID];
   }, [view]);
@@ -154,6 +169,8 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       incomingPeerConnection.current = null;
     }
     incomingChannelRef.current = null;
+    remoteStreamRef.current = null;
+    setRemoteHasVideo(false);
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
     }
@@ -215,14 +232,15 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter((device) => device.kind === 'videoinput');
       setDeviceList(videoDevices);
+      setMicrophones(devices.filter(device => device.kind === 'audioinput'));
 
-      if (!selectedDeviceId && videoDevices.length > 0) {
+      if (policy.video && !selectedDeviceId && videoDevices.length > 0) {
         setSelectedDeviceId(videoDevices[0].deviceId);
       }
     } catch (error) {
       console.error('useCallWebRTC: Failed to enumerate devices', error);
     }
-  }, [selectedDeviceId]);
+  }, [selectedDeviceId, policy.video]);
 
   const publishCurrentStream = useCallback(() => {
     const currentSocket = socketRef.current;
@@ -249,10 +267,13 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       room: activeRoom,
       stream: streamId,
       parameters: {
-        width: videoSettings.width || streamSettings.width || 640,
-        height: videoSettings.height || streamSettings.height || 360,
-        frameRate: videoSettings.frameRate || streamSettings.framerate || 15,
-        videoBitrate: streamSettings.videoBitrate || 500,
+        kind: currentStream.getVideoTracks().length ? 'camera' : 'audio',
+        mutedAudio: isMicMutedRef.current,
+        mutedVideo: !currentStream.getVideoTracks().length,
+        width: currentStream.getVideoTracks().length ? (videoSettings.width || streamSettings.width || 640) : 0,
+        height: currentStream.getVideoTracks().length ? (videoSettings.height || streamSettings.height || 360) : 0,
+        frameRate: currentStream.getVideoTracks().length ? (videoSettings.frameRate || streamSettings.framerate || 15) : 0,
+        videoBitrate: currentStream.getVideoTracks().length ? (streamSettings.videoBitrate || 500) : 0,
         audioBitrate: streamSettings.audioBitrate || 32,
         type: 'webrtc',
       },
@@ -291,11 +312,12 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
         maxParticipants: 2,
         privateRoom: true,
         view,
+        participant: { mic: policy.audio, camera: policy.video },
       },
     });
 
     return true;
-  }, [room, username, view]);
+  }, [room, username, view, policy.audio, policy.video]);
 
   const applyLocalStream = useCallback(async (nextStream, previousStream = localStreamRef.current) => {
     nextStream.getAudioTracks().forEach((track) => {
@@ -319,6 +341,7 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       });
     }
 
+    mediaReadyRef.current = true;
     setMediaReady(true);
 
     if (socketRef.current?.connected && room && roomRef.current === room) {
@@ -341,12 +364,15 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
 
     connection.ontrack = (event) => {
       const stream = event.streams?.[0];
-      if (!stream || !remoteVideoRef.current) return;
+      if (!stream) return;
+      remoteStreamRef.current = stream;
+      setRemoteHasVideo(stream.getVideoTracks().some(track => track.readyState === 'live'));
+      if (!remoteVideoRef.current) return;
       if (remoteVideoRef.current.srcObject !== stream) {
         remoteVideoRef.current.srcObject = stream;
       }
       remoteVideoRef.current.muted = isSpeakerMuted;
-      remoteVideoRef.current.play().catch(() => {});
+      remoteVideoRef.current.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
       setIsRemoteLive(true);
     };
 
@@ -364,9 +390,11 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
     connection.onconnectionstatechange = () => {
       if (!incomingPeerConnection.current) return;
       const state = incomingPeerConnection.current.connectionState;
-      if (state === 'failed' || state === 'closed' || state === 'disconnected') {
-        cleanupIncomingConnection();
+      if (state === 'connected') { clearTimeout(recoveryTimers.current.get(connection)); recoveryTimers.current.delete(connection); }
+      if (state === 'disconnected' && !recoveryTimers.current.has(connection)) {
+        recoveryTimers.current.set(connection, setTimeout(() => { if (connection.connectionState === 'disconnected') cleanupIncomingConnection(); }, 8000));
       }
+      if (state === 'failed' || state === 'closed') cleanupIncomingConnection();
     };
 
     try {
@@ -426,7 +454,12 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
     };
 
     connection.onconnectionstatechange = () => {
-      if (connection.connectionState === 'failed' || connection.connectionState === 'closed' || connection.connectionState === 'disconnected') {
+      if (connection.connectionState === 'connected') { clearTimeout(recoveryTimers.current.get(connection)); recoveryTimers.current.delete(connection); }
+      if (connection.connectionState === 'disconnected' && !recoveryTimers.current.has(connection)) {
+        connection.restartIce?.();
+        recoveryTimers.current.set(connection, setTimeout(() => { if (connection.connectionState === 'disconnected') cleanupOutgoingPeerConnection(peerID, 'recovery-expired'); }, 8000));
+      }
+      if (connection.connectionState === 'failed' || connection.connectionState === 'closed') {
         cleanupOutgoingPeerConnection(peerID, 'state-change');
       }
     };
@@ -541,6 +574,9 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       streamNew: message?.streamNew?.channel || null,
       streamRemove: message?.streamRemove || null,
     });
+
+    // The join snapshot can arrive before the chat panel mounts (especially text-only calls).
+    if (Array.isArray(message.messages)) useChatStore.getState().setMessages(room, message.messages);
 
     if (message.meta) {
       setRoomMeta(message.meta);
@@ -670,19 +706,21 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
     }
 
     isStartingPreview.current = true;
+    const generation = ++captureGeneration.current;
 
     try {
-      const constraints = {
-        video: {
-          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
-          width: { ideal: streamSettings.width || 640 },
-          height: { ideal: streamSettings.height || 360 },
-          frameRate: { ideal: streamSettings.framerate || 15 },
-        },
-        audio: true,
-      };
-
+      setMediaError(null);
+      if (policy.text) {
+        if (localStreamRef.current) localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+        setMediaReady(true);
+        mediaReadyRef.current = true;
+        joinRoom();
+        return;
+      }
+      const constraints = captureConstraints(policy, streamSettings, selectedDeviceId, selectedMicrophone);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (!startedRef.current || generation !== captureGeneration.current) { stream.getTracks().forEach(track => track.stop()); return; }
       const previousStream = localStreamRef.current;
       setIsScreenSharing(false);
 
@@ -695,31 +733,34 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
 
       await applyLocalStream(stream, previousStream);
     } catch (error) {
+      if (generation !== captureGeneration.current || !startedRef.current) return;
       console.error('useCallWebRTC: Failed to get local media', error);
       logCallWebRTC(view, 'local media failed', {
         room,
         message: error.message || 'Unable to access camera/microphone',
         name: error.name || null,
       });
-      setRoomError(error.message || 'Unable to access camera/microphone');
+      setMediaError(error.message || 'Unable to access microphone/camera');
       setMediaReady(false);
     } finally {
-      isStartingPreview.current = false;
+      if (generation === captureGeneration.current) isStartingPreview.current = false;
     }
-  }, [applyLocalStream, room, selectedDeviceId, streamSettings.framerate, streamSettings.height, streamSettings.width, view]);
+  }, [applyLocalStream, room, selectedDeviceId, streamSettings.framerate, streamSettings.height, streamSettings.width, view, policy, streamSettings, selectedMicrophone, joinRoom]);
 
   const startScreenShare = useCallback(async () => {
-    if (isStartingPreview.current || isScreenSharingRef.current) {
+    if (!policy.video || isStartingPreview.current || isScreenSharingRef.current) {
       return;
     }
 
     isStartingPreview.current = true;
+    const generation = ++captureGeneration.current;
 
     try {
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: false,
       });
+      if (!startedRef.current || generation !== captureGeneration.current) { displayStream.getTracks().forEach(track => track.stop()); return; }
       const previousStream = localStreamRef.current;
       const audioTracks = previousStream?.getAudioTracks().filter((track) => track.readyState === 'live') || [];
       const composedStream = new MediaStream([
@@ -753,9 +794,9 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
         name: error.name || null,
       });
     } finally {
-      isStartingPreview.current = false;
+      if (generation === captureGeneration.current) isStartingPreview.current = false;
     }
-  }, [applyLocalStream, room, startPreview, view]);
+  }, [applyLocalStream, room, startPreview, view, policy.video]);
 
   const rotateCamera = useCallback(async () => {
     if (isScreenSharingRef.current) {
@@ -788,7 +829,7 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.muted = nextValue;
         if (!nextValue) {
-          remoteVideoRef.current.play().catch(() => {});
+          remoteVideoRef.current.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
         }
       }
       return nextValue;
@@ -796,8 +837,8 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
   }, []);
 
   useEffect(() => {
-    startPreview();
-  }, [startPreview]);
+    if (started && !ended) startPreview();
+  }, [startPreview, started, ended]);
 
   useEffect(() => {
     const currentSocket = socketRef.current;
@@ -820,6 +861,7 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
     currentSocket.on('roomUpdate', handleRoomUpdate);
     currentSocket.on('publishError', handleServerError);
     currentSocket.on('subscribeError', handleServerError);
+    currentSocket.on('connect_error', handleServerError);
 
     if (currentSocket.connected && room && mediaReadyRef.current) {
       joinRoom();
@@ -832,6 +874,7 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
       currentSocket.off('roomUpdate', handleRoomUpdate);
       currentSocket.off('publishError', handleServerError);
       currentSocket.off('subscribeError', handleServerError);
+      currentSocket.off('connect_error', handleServerError);
     };
   }, [handleDisconnect, handleRoomUpdate, handleServerError, handleSocketMessage, joinRoom, room, socket]);
 
@@ -852,16 +895,38 @@ export default function useCallWebRTC({ room, view = 'CallChat' }) {
   }, [joinRoom, leaveRoom, room]);
 
   useEffect(() => () => {
+    ++captureGeneration.current;
+    isStartingPreview.current = false;
     leaveRoom(previousRoomRef.current);
     cleanupOutgoingConnections();
     cleanupIncomingConnection();
+    for (const timer of recoveryTimers.current.values()) clearTimeout(timer);
+    recoveryTimers.current.clear();
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
   }, [cleanupIncomingConnection, cleanupOutgoingConnections, leaveRoom]);
 
+  const startCall = () => { startedRef.current = true; setEnded(false); setStarted(true); };
+  const endCall = () => {
+    startedRef.current = false;
+    ++captureGeneration.current;
+    isStartingPreview.current = false;
+    setEnded(true);
+    setStarted(false);
+    mediaReadyRef.current = false;
+    setMediaReady(false);
+    leaveRoom();
+    for (const timer of recoveryTimers.current.values()) clearTimeout(timer);
+    recoveryTimers.current.clear();
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    localStreamRef.current = null;
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+  };
+  const enableSound = () => remoteVideoRef.current?.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
   return {
+    policy, started, ended, startCall, endCall, reconnect: () => { if (socketRef.current?.connected) joinRoom(); else socketRef.current?.connect(); }, retryMedia: startPreview, microphones, selectedMicrophone, setSelectedMicrophone, remoteHasVideo, playbackBlocked, enableSound, mediaError,
     setLocalVideoElement,
     setRemoteVideoElement,
     deviceList,
