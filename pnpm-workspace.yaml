@@ -1,0 +1,5 @@
+packages:
+  - '.'
+overrides:
+  deepmerge: 4.1.1
+  'workbox-build>glob': 14.0.6

@@ -1,5 +1,12 @@
 # Webcam Streaming WebRTC
 
+## Dependency security maintenance — 2026-11-17
+
+Both npm and pnpm lockfiles are refreshed and audit with **zero findings**, including development dependencies. The former pnpm lock retained older React Router/Vite/tool dependencies despite newer npm builds. Both managers now use the tested Workbox glob 14.0.6 override; pnpm settings are in `pnpm-workspace.yaml` so current pnpm applies them.
+
+Clean npm and frozen pnpm installs, builds, public-precache/cancellation checks and 18 desktop/mobile browser cases per manager pass. Run `npm run build && npm run test:security-build` (or the corresponding pnpm commands) before distribution. The guard checks the actual Workbox glob API and prevents private config/login/PHP files from entering the service-worker precache. Keep both lockfiles and override settings in sync when updating dependencies. No signaling-server or paid-session protocol change is included.
+
+
 ## Direct video, voice and text calls — 2026-11-16
 
 `CallChat` now offers a pre-join choice for each participant: video and microphone, microphone only, or text only. Both sides can receive the other participant's media and chat. Audio mode never requests a camera; text mode requests no devices and can still receive audio/video. Join explicitly grants media access. End stops local capture and peer connections; permission errors retain Retry/End controls, and blocked playback offers Enable sound. Recent room history is restored on join.

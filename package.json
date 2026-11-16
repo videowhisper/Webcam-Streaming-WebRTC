@@ -11,7 +11,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "preview": "vite preview",
-    "deploy": "NODE_ENV=production vite build"
+    "deploy": "NODE_ENV=production vite build",
+    "test:security-build": "node tests/security-build.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.0",
@@ -41,6 +42,9 @@
     "vite-plugin-pwa": "^1.0.0"
   },
   "overrides": {
-    "deepmerge": "4.1.1"
+    "deepmerge": "4.1.1",
+    "workbox-build": {
+      "glob": "14.0.6"
+    }
   }
 }
