@@ -1,3 +1,9 @@
+## Version 2.0: separate Free/Pro model
+
+The outgoing Free profile is fixed at a target640×360,15fps, maximum750kbps video/32kbps audio, independent of host quality requests. Voice requests only a microphone; text requests no devices. Sender caps scale higher camera capture down; received media is not degraded to the receiver's own profile. Unsupported device constraints retry with ideal settings. Device/network limitations may provide less than the target.
+
+The last pre-separation app is retained as the protected `pre-free-pro-2026.11.17` tag. Use `SOURCE_DATE_EPOCH` (UTC Unix seconds) for a repeatable build timestamp. Prior GPL history remains available. Advanced quality controls live in the separately installed Videochat Pro companion; Free does not include a premium factory, unlock flag or CRM polling. WordPress hosts should change their bundled runtime only after qualifying existing-customer Pro availability and fallback/rollback.
+
 # Webcam Streaming WebRTC
 
 ## Dependency security maintenance — 2026-11-17

@@ -6,10 +6,10 @@ import fs from 'fs';
 import path from 'path';
 
 // Get current date and time for build timestamp
-const now = new Date();
+const now = new Date(Number(process.env.SOURCE_DATE_EPOCH || Math.floor(Date.now()/1000))*1000);
 const buildTimestamp = now.toISOString();
-const buildDate = now.toLocaleDateString();
-const buildTime = now.toLocaleTimeString();
+const buildDate = now.toISOString().slice(0,10);
+const buildTime = now.toISOString().slice(11,19)+' UTC';
 
 export default defineConfig({
   // Add base path for subfolder deployment

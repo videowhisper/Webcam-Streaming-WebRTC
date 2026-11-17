@@ -1,3 +1,4 @@
+import { normalizeStream } from '../utils/streamProfile';
 import useAppStore from '../store/appStore';
 import { generateId, getGETParam } from './configUtils';
 
@@ -152,6 +153,7 @@ export function loadConfigIntoStore() {
 
       // Set the config in the store
       if (import.meta.env.DEV) console.log('Setting config in store.');
+      merged.stream = normalizeStream();
       store.setConfig(merged);
       
       // Only set view if different from current

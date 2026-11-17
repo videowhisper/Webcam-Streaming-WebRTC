@@ -1,3 +1,4 @@
+import { applySenderProfile } from '../utils/streamProfile';
 // Custom hook for WebRTC functionality with fixed dependency management
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { isDevMode } from '../config/devMode';
@@ -414,6 +415,8 @@ export default function useBroadcastWebRTC({
 
     // Handle connection state changes
     pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') applySenderProfile(pc, streamSettingsRef.current).catch(error => console.error('Unable to apply sender quality caps', error.name));
+
       if (isDevMode()) console.debug('useBroadcastWebRTC: Connection state change for peer:', peerID, pc.connectionState);
 
       /*

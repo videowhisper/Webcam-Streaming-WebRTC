@@ -1,3 +1,4 @@
+import { applySenderProfile } from '../utils/streamProfile';
 import React, { useEffect, useRef, useState } from 'react';
 import { isDevMode } from '../config/devMode';
 import { Wifi, WifiOff, SwitchCamera, Loader, Mic, MicOff, RefreshCcw } from 'lucide-react';
@@ -317,6 +318,8 @@ export default function BroadcastWebRTC() {
 
     // Handle connection state changes
     pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') applySenderProfile(pc, config.stream).catch(error => console.error('Unable to apply sender quality caps', error.name));
+
       if (isDevMode()) console.debug('BroadcastWebRTC Connection state change for peer:', peerID, pc.connectionState);
       
       // Handle connection established

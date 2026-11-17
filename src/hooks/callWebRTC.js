@@ -1,3 +1,4 @@
+import { applySenderProfile, acquireMedia } from '../utils/streamProfile';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useAppStore from '../store/appStore';
 import useChatStore from '../store/chatStore';
@@ -388,6 +389,7 @@ export default function useCallWebRTC({ room, view = 'CallChat', mediaMode, auto
     };
 
     connection.onconnectionstatechange = () => {
+
       if (!incomingPeerConnection.current) return;
       const state = incomingPeerConnection.current.connectionState;
       if (state === 'connected') { clearTimeout(recoveryTimers.current.get(connection)); recoveryTimers.current.delete(connection); }
@@ -454,6 +456,8 @@ export default function useCallWebRTC({ room, view = 'CallChat', mediaMode, auto
     };
 
     connection.onconnectionstatechange = () => {
+      if (connection.connectionState === 'connected') applySenderProfile(connection, streamSettings).catch(error => console.error('Unable to apply sender quality caps', error.name));
+
       if (connection.connectionState === 'connected') { clearTimeout(recoveryTimers.current.get(connection)); recoveryTimers.current.delete(connection); }
       if (connection.connectionState === 'disconnected' && !recoveryTimers.current.has(connection)) {
         connection.restartIce?.();
@@ -481,7 +485,7 @@ export default function useCallWebRTC({ room, view = 'CallChat', mediaMode, auto
         console.error('useCallWebRTC: Failed to negotiate outgoing connection', error);
       }
     };
-  }, [cleanupOutgoingPeerConnection, username, view]);
+  }, [cleanupOutgoingPeerConnection, username, view, streamSettings]);
 
   const handleSocketMessage = useCallback((message) => {
     if (!message) return;
@@ -719,7 +723,7 @@ export default function useCallWebRTC({ room, view = 'CallChat', mediaMode, auto
         return;
       }
       const constraints = captureConstraints(policy, streamSettings, selectedDeviceId, selectedMicrophone);
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await acquireMedia(navigator.mediaDevices,constraints);
       if (!startedRef.current || generation !== captureGeneration.current) { stream.getTracks().forEach(track => track.stop()); return; }
       const previousStream = localStreamRef.current;
       setIsScreenSharing(false);
